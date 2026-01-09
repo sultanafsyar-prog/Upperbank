@@ -16,4 +16,5 @@ COPY ./pb_migrations /pb/pb_migrations
 EXPOSE 8080
 
 # Jalankan dengan host 0.0.0.0 agar bisa diakses publik
-CMD ["/pb/pocketbase", "serve", "--http=0.0.0.0:8080"]
+# Gunakan variabel $PORT agar Railway bisa mengatur portnya sendiri
+CMD ["sh", "-c", "/pb/pocketbase serve --http=0.0.0.0:${PORT:-8080}"]
