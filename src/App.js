@@ -3,7 +3,7 @@ import PocketBase from 'pocketbase';
 import * as XLSX from 'xlsx';
 
 // Sesuaikan IP server jika berpindah jaringan
-const pb = new PocketBase('http://192.168.95.115:8090'); 
+const pb = new PocketBase('http:upperbank-production.up.railway.app'); 
 
 const DAFTAR_RAK = ["A-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
 
