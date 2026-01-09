@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 // Konfigurasi PocketBase
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app'); 
 
-const DAFTAR_RAK = ["-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
+const DAFTAR_RAK = ["A-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
 
 function App() {
   // STATE UNTUK AUTHENTICATION
