@@ -12,8 +12,5 @@ RUN chmod +x /pb/pocketbase
 # Salin migrations
 COPY ./pb_migrations /pb/pb_migrations
 
-# EXPOSE tidak perlu diisi angka spesifik, Railway yang akan atur
-EXPOSE 8080
-
-# PERINTAH PENTING: Menggunakan port dari Railway secara dinamis
-CMD ["sh", "-c", "/pb/pocketbase serve --http=0.0.0.0:${PORT}"]
+# Jalankan PocketBase di folder /tmp agar tidak 'read-only error'
+CMD ["sh", "-c", "/pb/pocketbase serve --http=0.0.0.0:${PORT:-8080} --dir=/tmp/pb_data"]
