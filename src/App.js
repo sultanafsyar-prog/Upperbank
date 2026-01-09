@@ -152,8 +152,8 @@ function App() {
     return (
       <div style={{ ...s.modalOverlay, backgroundColor: '#1a237e' }}>
         <div style={{ ...s.modalContent, width: '400px', padding: '40px' }}>
-          <h2 style={{ color: '#1a237e' }}>🔐 LOGIN SYSTEM</h2>
-          <p style={{ fontSize: '12px', color: '#666' }}>UPPER BANK CONTROL - PT. XYZ</p>
+          <h2 style={{ color: '#1a237e' }}>LOGIN SYSTEM</h2>
+          <p style={{ fontSize: '12px', color: '#666' }}>UPPER BANK CONTROL - PT. DIAMOND INTERNATIONAL INDONESIA</p>
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
             <input 
               style={s.input} type="email" placeholder="Email" required 
@@ -189,9 +189,9 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{margin:0}}>UPPER BANK CONTROL</h2>
+        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-            <button onClick={() => setShowExportModal(true)} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>EXPORT EXCEL</button>
+            <button onClick={() => setShowExportModal(true)} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}><img src="/Excell.png" alt="Export" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
             <button onClick={handleLogout} style={{ background: '#e74c3c', border: 'none', color: 'white', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer' }}>Keluar 🚪</button>
         </div>
       </nav>
@@ -236,7 +236,7 @@ function App() {
                           <span>{it.spk}<br/><small style={{color:'#7f8c8d'}}>{it.style}</small></span>
                           <button onClick={() => {
                               setFormData({...formData, type: 'OUT', spk_number: it.spk, style_name: it.style, size: it.size, rack: it.rack, qty: it.stock});
-                          }} style={{border:'none', background:'#e74c3c', color:'white', borderRadius:'3px', cursor:'pointer', padding:'0 5px'}}>📦 {it.stock}</button>
+                          }} style={{border:'none', background:'#e74c3c', color:'white', borderRadius:'3px', cursor:'pointer', padding:'0 5px'}}> {it.stock}</button>
                         </div>
                       ))}
                     </div>
