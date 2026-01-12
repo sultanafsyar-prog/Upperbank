@@ -11,7 +11,6 @@ function App() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  // TAMBAHAN: State untuk mencegah klik ganda
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [inventory, setInventory] = useState([]);
@@ -29,8 +28,11 @@ function App() {
     try {
       await pb.collection('users').authWithPassword(loginEmail, loginPassword);
       setIsLoggedIn(true);
+      fetchData();
     } catch (err) {
-      alert("Login Gagal!");
+      pb.authStore.clear(); // Bersihkan sisa login jika gagal
+      setIsLoggedIn(false);
+      alert("⚠️ LOGIN GAGAL: Email atau Password salah!");
     } finally {
       setLoading(false);
     }
@@ -80,10 +82,20 @@ function App() {
     }
   }, [fetchData, isLoggedIn]);
 
+  // FITUR: KLIK LANGSUNG DI RAK (DIKEMBALIKAN)
+  const handlePickFromRack = (item) => {
+    setFormData({
+      ...formData,
+      spk_number: item.spk,
+      style_name: item.style,
+      size: item.size,
+      rack: item.rack,
+      type: 'OUT' // Biasanya klik di rak untuk pengambilan (OUT)
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // TAMBAHAN: Jika sedang mengirim, abaikan klik selanjutnya
     if (isSubmitting) return; 
     setIsSubmitting(true);
 
@@ -98,7 +110,7 @@ function App() {
       );
       if (Number(formData.qty) > (match?.stock || 0)) {
         alert(`⚠️ STOK TIDAK CUKUP! (Tersedia: ${match?.stock || 0})`);
-        setIsSubmitting(false); // Buka kunci jika gagal validasi
+        setIsSubmitting(false);
         return;
       }
     }
@@ -121,7 +133,6 @@ function App() {
     } catch (err) { 
       alert("Gagal Simpan!"); 
     } finally {
-      // TAMBAHAN: Buka kembali tombol setelah proses selesai
       setIsSubmitting(false);
     }
   };
@@ -155,7 +166,9 @@ function App() {
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
           <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
-          <button type="submit" style={{ ...s.btn, background: '#1a237e' }}>MASUK</button>
+          <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>
+            {loading ? "MENGECEK..." : "MASUK"}
+          </button>
         </form>
       </div>
     </div>
@@ -201,8 +214,6 @@ function App() {
               </select>
               <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator: e.target.value})} required />
-              
-              {/* MODIFIKASI: Tombol menggunakan status isSubmitting */}
               <button 
                 type="submit" 
                 disabled={isSubmitting}
@@ -236,7 +247,11 @@ function App() {
                   <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '8px', borderTop: `4px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>{rack} ({total} prs)</div>
                     {items.map((it, idx) => (
-                      <div key={idx} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px' }}>
+                      <div 
+                        key={idx} 
+                        onClick={() => handlePickFromRack(it)} // FITUR KLIK RAK DIKEMBALIKAN
+                        style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}
+                      >
                         <strong>{it.spk}</strong><br/>
                         {it.style}<br/>
                         <span style={{color: '#1a237e', fontWeight: 'bold'}}>Sz: {it.size}</span>
