@@ -11,6 +11,8 @@ function App() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  // TAMBAHAN: State untuk mencegah klik ganda
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
@@ -28,7 +30,7 @@ function App() {
       await pb.collection('users').authWithPassword(loginEmail, loginPassword);
       setIsLoggedIn(true);
     } catch (err) {
-      alert("Login Gagal! Periksa Email & Password Anda.");
+      alert("Login Gagal!");
     } finally {
       setLoading(false);
     }
@@ -42,33 +44,32 @@ function App() {
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      // Ambil 200 data terbaru untuk History
-      const records = await pb.collection('upper_stock').getList(1, 200, { 
+      const res = await pb.collection('upper_stock').getList(1, 100, { 
         sort: '-created', 
         requestKey: null 
       });
-      setRawRecords(records.items);
+      setRawRecords(res.items);
       
-      // Ambil semua data untuk hitung Stok Akurat di Rak
       const allRecords = await pb.collection('upper_stock').getFullList({ requestKey: null });
       const summary = allRecords.reduce((acc, curr) => {
-        const inQty = Number(curr.qty_in || 0);
-        const outQty = Number(curr.qty_out || 0);
-        const rackLoc = curr.rack_location || "Tanpa Rak";
-        const spk = curr.spk_number || "Tanpa SPK";
-        const size = curr.size || "No Size";
-        const style = curr.style_name || "";
-        const key = `${spk}-${size}-${rackLoc}`;
-        
+        const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
-          acc[key] = { spk, style, size, rack: rackLoc, stock: 0 };
+          acc[key] = { 
+            spk: curr.spk_number, 
+            style: curr.style_name, 
+            size: curr.size,
+            rack: curr.rack_location, 
+            stock: 0 
+          };
         }
-        acc[key].stock += (inQty - outQty);
+        acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
         return acc;
       }, {});
 
       setInventory(Object.values(summary).filter(i => i.stock !== 0));
-    } catch (error) { console.error("Gagal sinkronisasi:", error); }
+    } catch (error) { 
+      console.error("Gagal Sinkronisasi:", error); 
+    }
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -81,20 +82,23 @@ function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // TAMBAHAN: Jika sedang mengirim, abaikan klik selanjutnya
+    if (isSubmitting) return; 
+    setIsSubmitting(true);
+
     const sekarang = new Date();
-    const tgl = sekarang.toLocaleDateString('id-ID').replace(/\//g, '-');
-    const jam = sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    const waktuLokal = `${tgl} ${jam}`;
+    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     if (formData.type === 'OUT') {
-      const matchItem = inventory.find(i => 
+      const match = inventory.find(i => 
         i.spk === formData.spk_number.toUpperCase() && 
         i.rack === formData.rack && 
         i.size === formData.size
       );
-      const availableStock = matchItem ? matchItem.stock : 0;
-      if (Number(formData.qty) > availableStock) {
-        alert(`⚠️ STOK TIDAK CUKUP!\nRak: ${formData.rack}\nSize: ${formData.size}\nStok Tersedia: ${availableStock} prs`);
+      if (Number(formData.qty) > (match?.stock || 0)) {
+        alert(`⚠️ STOK TIDAK CUKUP! (Tersedia: ${match?.stock || 0})`);
+        setIsSubmitting(false); // Buka kunci jika gagal validasi
         return;
       }
     }
@@ -112,78 +116,79 @@ function App() {
         operator: formData.operator,
         waktu_input: waktuLokal 
       });
-      alert("✅ Transaksi Berhasil!");
+      alert("✅ Tersimpan!");
       setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0 });
-    } catch (err) { alert("Gagal Simpan!"); }
+    } catch (err) { 
+      alert("Gagal Simpan!"); 
+    } finally {
+      // TAMBAHAN: Buka kembali tombol setelah proses selesai
+      setIsSubmitting(false);
+    }
   };
 
   const executeExport = (filterType) => {
-    let dataToExport = rawRecords;
+    let data = rawRecords;
     if (filterType === 'HARI_INI') {
       const today = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
-      dataToExport = rawRecords.filter(r => r.waktu_input && r.waktu_input.startsWith(today));
+      data = rawRecords.filter(r => r.waktu_input?.startsWith(today));
     }
-    const dataLaporan = dataToExport.map((r) => ({
-      "Waktu": r.waktu_input || "-",
-      "Operator": r.operator,
-      "Tipe": r.qty_in > 0 ? "MASUK" : "KELUAR",
-      "No SPK": r.spk_number, "Style": r.style_name, "Size": r.size,
-      "Qty": r.qty_in > 0 ? r.qty_in : r.qty_out, "Rak": r.rack_location,
-      "Asal/Tujuan": r.qty_in > 0 ? r.source_from : r.destination
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(dataLaporan);
+    const worksheet = XLSX.utils.json_to_sheet(data.map(r => ({
+      "Waktu": r.waktu_input, "Operator": r.operator, "Tipe": r.qty_in > 0 ? "MASUK" : "KELUAR",
+      "SPK": r.spk_number, "Style": r.style_name, "Size": r.size, "Qty": r.qty_in || r.qty_out, "Rak": r.rack_location
+    })));
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Stok");
-    XLSX.writeFile(workbook, `Laporan_Stok.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan");
+    XLSX.writeFile(workbook, `Laporan.xlsx`);
     setShowExportModal(false);
   };
 
-  if (!isLoggedIn) {
-    return (
-      <div style={{ ...s.modalOverlay, backgroundColor: '#1a237e' }}>
-        <div style={{ ...s.modalContent, width: '400px', padding: '40px' }}>
-          <h2 style={{ color: '#1a237e' }}>LOGIN SYSTEM</h2>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <input style={s.input} type="email" placeholder="Email" required value={loginEmail} onChange={e => setLoginEmail(e.target.value)} />
-            <input style={s.input} type="password" placeholder="Password" required value={loginPassword} onChange={e => setLoginPassword(e.target.value)} />
-            <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>{loading ? '...' : 'MASUK'}</button>
-          </form>
-        </div>
+  const filteredHistory = rawRecords.filter(r => 
+    r.spk_number?.includes(searchTerm) || 
+    r.style_name?.includes(searchTerm) || 
+    r.rack_location?.includes(searchTerm)
+  );
+
+  if (!isLoggedIn) return (
+    <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
+      <div style={s.modalContent}>
+        <h2>LOGIN SYSTEM</h2>
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
+          <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
+          <button type="submit" style={{ ...s.btn, background: '#1a237e' }}>MASUK</button>
+        </form>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div style={{ fontFamily: 'Segoe UI, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
+    <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       {showExportModal && (
         <div style={s.modalOverlay}>
           <div style={s.modalContent}>
-            <h3><img src="/Excell.png" alt="Pilih Laporan" style={{ width: '20px', height: '20px', marginRight: '10px' }} />Pilih Laporan</h3>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'center' }}>
-              <button onClick={() => executeExport('HARI_INI')} style={{ ...s.btn, background: '#3498db' }}>HARI INI</button>
-              <button onClick={() => executeExport('SEMUA_DATA')} style={{ ...s.btn, background: '#27ae60' }}>SEMUA DATA</button>
-              <button onClick={() => setShowExportModal(false)} style={{ ...s.btn, background: '#95a5a6' }}>BATAL</button>
-            </div>
+            <h3>Ekspor ke Excel</h3>
+            <button onClick={() => executeExport('HARI_INI')} style={{ ...s.btn, background: '#3498db', margin: '5px' }}>HARI INI</button>
+            <button onClick={() => executeExport('SEMUA')} style={{ ...s.btn, background: '#27ae60', margin: '5px' }}>SEMUA DATA</button>
+            <button onClick={() => setShowExportModal(false)} style={{ ...s.btn, background: '#95a5a6', margin: '5px' }}>BATAL</button>
           </div>
         </div>
       )}
 
-      <nav style={{ background: '#1a237e', color: 'white', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ width: '30px', height: '30px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-            <button onClick={() => setShowExportModal(true)} style={{ background: '#27ae60', border: 'none', color: 'white', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>EXPORT EXCEL</button>
-            <button onClick={handleLogout} style={{ background: '#e74c3c', border: 'none', color: 'white', padding: '5px 15px', borderRadius: '5px', cursor: 'pointer' }}>Keluar 🚪</button>
+      <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
+        <div>
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}><img src="/Excell.png" alt="Export" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
+          <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>KELUAR</button>
         </div>
       </nav>
 
-      <div style={{ display: 'flex', gap: '20px', padding: '20px' }}>
-        {/* FORM INPUT */}
-        <div style={{ flex: '1', height: 'fit-content' }}>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+      <div style={{ display: 'flex', gap: '20px' }}>
+        <div style={{ flex: '1' }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Input / Pengambilan</h3>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-              <button onClick={() => setFormData({...formData, type:'IN'})} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white' }}>MASUK</button>
-              <button onClick={() => setFormData({...formData, type:'OUT'})} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white' }}>KELUAR</button>
+            <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
+              <button onClick={() => setFormData({...formData, type:'IN'})} style={{ flex: 1, padding: '10px', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>MASUK</button>
+              <button onClick={() => setFormData({...formData, type:'OUT'})} style={{ flex: 1, padding: '10px', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>KELUAR</button>
             </div>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({...formData, spk_number: e.target.value.toUpperCase()})} required />
@@ -194,50 +199,62 @@ function App() {
                 <option value="">-- Pilih Rak --</option>
                 {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder={formData.type === 'IN' ? 'Asal Barang' : 'Tujuan'} value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
+              <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator: e.target.value})} required />
-              <button type="submit" style={{ padding: '12px', borderRadius: '8px', border: 'none', background: '#1a237e', color: 'white', fontWeight: 'bold' }}>SIMPAN</button>
+              
+              {/* MODIFIKASI: Tombol menggunakan status isSubmitting */}
+              <button 
+                type="submit" 
+                disabled={isSubmitting}
+                style={{ 
+                  ...s.btn, 
+                  background: isSubmitting ? '#95a5a6' : '#1a237e', 
+                  padding: '15px',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isSubmitting ? "SEDANG MENYIMPAN..." : "SIMPAN"}
+              </button>
             </form>
           </div>
         </div>
 
-        {/* RAK & HISTORY */}
-        <div style={{ flex: '2.5' }}>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-            <input style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ddd' }} placeholder="🔍 Cari SPK di Rak..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+        <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+            <input 
+              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box', fontWeight: 'bold' }} 
+              placeholder=" CARI NOMOR SPK / STYLE / RAK..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value.toUpperCase())} 
+            />
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
               {DAFTAR_RAK.map(rack => {
                 const items = inventory.filter(i => i.rack === rack && i.spk.includes(searchTerm));
                 const total = items.reduce((a, b) => a + b.stock, 0);
                 return (
-                  <div key={rack} style={{ ...s.card, borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
-                    <center style={{marginBottom:'10px'}}><strong>{rack}</strong> <span style={{fontSize:'12px', color:'#7f8c8d'}}>({total} prs)</span></center>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {items.map((it, idx) => (
-                        <div key={idx} style={{ borderBottom: '1px solid #f0f0f0', paddingBottom: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontSize: '11px', lineHeight: '1.2' }}>
-                            <strong style={{color:'#2c3e50'}}>{it.spk}</strong><br/>
-                            <span style={{color:'#7f8c8d'}}>{it.style}</span><br/>
-                            <span style={{color:'#1a237e', fontWeight:'bold'}}>Size: {it.size}</span>
-                          </div>
-                          <button onClick={() => setFormData({...formData, type: 'OUT', spk_number: it.spk, style_name: it.style, size: it.size, rack: it.rack, qty: it.stock})} style={{border:'none', background:'#e74c3c', color:'white', borderRadius:'4px', padding:'4px 8px', fontSize:'11px', cursor:'pointer'}}>
-                             {it.stock}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                  <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '8px', borderTop: `4px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
+                    <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>{rack} ({total} prs)</div>
+                    {items.map((it, idx) => (
+                      <div key={idx} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px' }}>
+                        <strong>{it.spk}</strong><br/>
+                        {it.style}<br/>
+                        <span style={{color: '#1a237e', fontWeight: 'bold'}}>Sz: {it.size}</span>
+                        <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Qty: {it.stock}</div>
+                      </div>
+                    ))}
                   </div>
                 );
               })}
             </div>
           </div>
 
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', marginTop: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-            <h4 style={{marginTop: 0}}>Log Transaksi (200 Terbaru)</h4>
-            <div style={{ maxHeight: '450px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
-              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', zIndex: 10 }}>
-                  <tr style={{ textAlign: 'left' }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0 }}>Log Transaksi (Tersaring)</h3>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa' }}>
+                  <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
                     <th style={s.th}>Waktu</th>
                     <th style={s.th}>Op</th>
                     <th style={s.th}>SPK / Style</th>
@@ -247,13 +264,13 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rawRecords.map((r, i) => (
-                    <tr key={r.id || i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={s.td}>{r.waktu_input || '-'}</td>
+                  {filteredHistory.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={s.td}>{r.waktu_input}</td>
                       <td style={s.td}>{r.operator}</td>
-                      <td style={s.td}><strong>{r.spk_number}</strong><br/><small>{r.style_name}</small></td>
+                      <td style={s.td}><strong>{r.spk_number}</strong><br/>{r.style_name}</td>
                       <td style={s.td}>{r.size}</td>
-                      <td style={{ ...s.td, color: r.qty_in > 0 ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>
+                      <td style={{ ...s.td, color: r.qty_in > 0 ? 'green' : 'red', fontWeight: 'bold' }}>
                         {r.qty_in > 0 ? `+${r.qty_in}` : `-${r.qty_out}`}
                       </td>
                       <td style={s.td}>{r.rack_location}</td>
@@ -270,13 +287,12 @@ function App() {
 }
 
 const s = {
-  input: { padding: '12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px', outline: 'none' },
-  card: { background: '#fff', padding: '12px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', minHeight: '100px' },
-  th: { padding: '10px', borderBottom: '1px solid #ddd', background: '#f8f9fa' },
-  td: { padding: '10px', borderBottom: '1px solid #eee' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  modalContent: { background: 'white', padding: '30px', borderRadius: '15px', textAlign: 'center', width: '380px' },
-  btn: { padding: '12px 20px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }
+  input: { padding: '10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px' },
+  btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
+  th: { padding: '10px' },
+  td: { padding: '10px' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 },
+  modalContent: { background: 'white', padding: '30px', borderRadius: '15px', textAlign: 'center', minWidth: '300px' }
 };
 
 export default App;
