@@ -12,7 +12,7 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [viewMode, setViewMode] = useState('ADMIN'); // Mode: ADMIN atau TV
+  const [viewMode, setViewMode] = useState('ADMIN'); 
 
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
@@ -102,6 +102,7 @@ function App() {
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
+    // VALIDASI STOK (FITUR KEMBALI)
     if (formData.type === 'OUT') {
       const match = inventory.find(i =>
         i.spk === formData.spk_number.toUpperCase() &&
@@ -159,6 +160,11 @@ function App() {
     r.rack_location?.includes(searchTerm)
   );
 
+  const tglHariIni = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
+  const logsHariIni = rawRecords.filter(r => r.waktu_input?.startsWith(tglHariIni));
+  const inToday = logsHariIni.reduce((acc, curr) => acc + (Number(curr.qty_in) || 0), 0);
+  const outToday = logsHariIni.reduce((acc, curr) => acc + (Number(curr.qty_out) || 0), 0);
+
   if (!isLoggedIn) return (
     <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
       <div style={s.modalContent}>
@@ -174,60 +180,92 @@ function App() {
     </div>
   );
 
-  // --- MODE TV DASHBOARD (ALA BURSA SAHAM) ---
+  // --- VIEW: TV DASHBOARD (STOCK MARKET THEME) ---
   if (viewMode === 'TV') return (
     <div style={{ background: '#050714', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'monospace', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', background: '#0a0e27', padding: '15px', borderRadius: '10px', borderBottom: '3px solid #3498db' }}>
+       <style>{`
+        @keyframes pulse-glow { 0% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } 50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.5); } 100% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .glass-card { background: rgba(22, 27, 34, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 12px; }
+        .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
+        .ticker-container::-webkit-scrollbar { width: 4px; }
+        .ticker-container::-webkit-scrollbar-thumb { background: #3498db; }
+      `}</style>
+
+      {/* HEADER GAYA SAHAM */}
+      <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 30px', marginBottom: '20px', borderBottom: '3px solid #3498db' }}>
         <div>
-          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}><img src="/logo.png" alt="logo" style={{ width: '24px', height: '24px', marginRight: '8px' }} /> REAL-TIME STOCK TICKER</h1>
+          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}><img src="/logo.png" alt="Stock" width="30" height="30" /> REAL-TIME STOCK TICKER</h1>
           <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>LAST UPDATE: {new Date().toLocaleTimeString()}</p>
         </div>
-        <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT MODE TV</button>
+        
+        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#2ecc71' }}>IN TODAY</div>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#2ecc71', animation: 'blink 2s infinite' }}>▲ {inToday}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#e74c3c' }}>OUT TODAY</div>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#e74c3c', animation: 'blink 2s infinite' }}>▼ {outToday}</div>
+          </div>
+          <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px', height: '80vh' }}>
-        {/* GRID RAK */}
-        <div style={{ flex: 2.5, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
+      <div style={{ display: 'flex', gap: '20px', height: '75vh' }}>
+        {/* GRID RAK DENGAN DETAIL */}
+        <div style={{ flex: 3, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
             const total = items.reduce((a, b) => a + b.stock, 0);
             return (
-              <div key={rack} style={{ background: '#161b33', padding: '20px', borderRadius: '8px', border: total > 0 ? '1px solid #3498db' : '1px solid #222', textAlign: 'center', boxShadow: total > 0 ? '0 0 10px rgba(52, 152, 219, 0.3)' : 'none' }}>
-                <div style={{ fontSize: '18px', color: '#3498db', fontWeight: 'bold' }}>{rack}</div>
-                <div style={{ fontSize: '55px', fontWeight: 'bold', margin: '10px 0' }}>{total}</div>
-                <div style={{ fontSize: '12px', color: '#888' }}>{items.length} ACTIVE SPK</div>
+              <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '15px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '20px', color: '#3498db', fontWeight: 'bold' }}>{rack}</span>
+                  <span style={{ fontSize: '16px', background: '#1a237e', padding: '2px 8px', borderRadius: '4px' }}>{total} prs</span>
+                </div>
+                
+                <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
+                  {items.map((it, idx) => (
+                    <div key={idx} style={{ padding: '8px 0', borderBottom: '1px solid #222', fontSize: '11px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3498db' }}>
+                        <strong>{it.spk}</strong>
+                        <strong style={{color: '#fff'}}>{it.stock}</strong>
+                      </div>
+                      <div style={{ color: '#888' }}>{it.style} | SZ: {it.size}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })}
         </div>
 
-        {/* LIVE ACTIVITY TICKER (AUTO SCROLL) */}
-        <div style={{ flex: 1, background: '#0a0e27', borderRadius: '10px', border: '1px solid #1a237e', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* LOG AKTIVITAS */}
+        <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid #1a237e' }}>
           <div style={{ padding: '15px', background: '#1a237e', fontWeight: 'bold' }}>LIVE TRANSACTION FEED</div>
           <div className="ticker-container" style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
-             <style>{`.ticker-container::-webkit-scrollbar { width: 4px; } .ticker-container::-webkit-scrollbar-thumb { background: #3498db; }`}</style>
-             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {rawRecords.map((log, i) => (
-                  <div key={i} style={{ padding: '10px', background: '#161b33', borderRadius: '5px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888' }}>
-                      <span>{log.waktu_input}</span>
-                      <span style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? '▲ IN' : '▼ OUT'}</span>
-                    </div>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{log.spk_number}</div>
-                    <div style={{ fontSize: '12px' }}>QTY: {log.qty_in || log.qty_out} | RAK: {log.rack_location}</div>
-                  </div>
-                ))}
-             </div>
+            {rawRecords.map((log, i) => (
+              <div key={i} style={{ padding: '10px', background: '#161b33', borderRadius: '5px', marginBottom: '10px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888' }}>
+                  <span>{log.waktu_input}</span>
+                  <span style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? '▲ IN' : '▼ OUT'}</span>
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '4px 0' }}>{log.spk_number}</div>
+                <div style={{ fontSize: '12px' }}>QTY: {log.qty_in || log.qty_out} | RAK: {log.rack_location}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#1a237e', padding: '5px' }}>
-         <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}>⚠️ MONITORING AKTIF | TOTAL UNIT TERSEDIA DI SEMUA RAK: {inventory.reduce((a,b)=>a+b.stock, 0)} PRS | PASTIKAN OPERATOR MENGINPUT DATA DENGAN BENAR </marquee>
+        <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}> TOTAL UNIT TERSEDIA: {inventory.reduce((a,b)=>a+b.stock, 0)} PRS | MONITORING AKTIF | HARAP INPUT DATA DENGAN TELITI </marquee>
       </div>
     </div>
   );
 
+  // --- VIEW: ADMIN MODE (ORIGINAL + ALL FEATURES) ---
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       {showExportModal && (
@@ -242,15 +280,16 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />SUPERTMARKET CONTROL</h2>
+        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" width="30" height="30" /> SUPERTMARKET CONTROL</h2>
         <div>
-          <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>🖥️ DASHBOARD TV</button>
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}><img src="/Excell.png" alt="" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
+          <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD VIEW</button>
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}>EXPORT EXCEL</button>
           <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>KELUAR</button>
         </div>
       </nav>
 
       <div style={{ display: 'flex', gap: '20px' }}>
+        {/* FORM INPUT */}
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Input / Pengambilan</h3>
@@ -276,10 +315,11 @@ function App() {
           </div>
         </div>
 
+        {/* DISPLAY STOK RAK */}
         <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <input
-              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box', fontWeight: 'bold' }}
+              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box' }}
               placeholder=" CARI NOMOR SPK / STYLE / RAK..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value.toUpperCase())}
@@ -294,8 +334,7 @@ function App() {
                     {items.map((it, idx) => (
                       <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}>
                         <strong>{it.spk}</strong><br />
-                        {it.style}<br />
-                        <span style={{ color: '#1a237e', fontWeight: 'bold' }}>Sz: {it.size}</span>
+                        {it.style} | <span style={{ color: '#1a237e' }}>Sz: {it.size}</span>
                         <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Qty: {it.stock}</div>
                       </div>
                     ))}
@@ -305,6 +344,7 @@ function App() {
             </div>
           </div>
 
+          {/* TABEL LOG */}
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3 style={{ marginTop: 0 }}>Log Transaksi (Tersaring)</h3>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
