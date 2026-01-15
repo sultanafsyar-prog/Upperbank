@@ -178,7 +178,7 @@ function App() {
   if (viewMode === 'TV') return (
     <div style={{ background: '#0a0e27', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #1a237e', paddingBottom: '10px' }}>
-        <h1 style={{ fontSize: '32px', margin: 0 }}>📊 MONITORING REAL-TIME UPPER BANK</h1>
+        <h1 style={{ fontSize: '32px', margin: 0 }}><img src="/path/to/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} /> MONITORING REAL-TIME UPPER BANK</h1>
         <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>KEMBALI KE ADMIN</button>
       </div>
       <div style={{ display: 'flex', gap: '20px' }}>
