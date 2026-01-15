@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import PocketBase from 'pocketbase';
 import * as XLSX from 'xlsx';
 
-const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app'); 
+const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
 const DAFTAR_RAK = ["A-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
 
@@ -19,7 +19,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [formData, setFormData] = useState({
-    spk_number: '', style_name: '', size: '', qty: 0, 
+    spk_number: '', style_name: '', size: '', qty: 0,
     type: 'IN', source_dest: '', rack: '', operator: ''
   });
 
@@ -47,22 +47,22 @@ function App() {
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      const res = await pb.collection('upper_stock').getList(1, 100, { 
-        sort: '-created', 
-        requestKey: null 
+      const res = await pb.collection('upper_stock').getList(1, 100, {
+        sort: '-created',
+        requestKey: null
       });
       setRawRecords(res.items);
-      
+
       const allRecords = await pb.collection('upper_stock').getFullList({ requestKey: null });
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
-          acc[key] = { 
-            spk: curr.spk_number, 
-            style: curr.style_name, 
+          acc[key] = {
+            spk: curr.spk_number,
+            style: curr.style_name,
             size: curr.size,
-            rack: curr.rack_location, 
-            stock: 0 
+            rack: curr.rack_location,
+            stock: 0
           };
         }
         acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
@@ -70,8 +70,8 @@ function App() {
       }, {});
 
       setInventory(Object.values(summary).filter(i => i.stock !== 0));
-    } catch (error) { 
-      console.error("Gagal Sinkronisasi:", error); 
+    } catch (error) {
+      console.error("Gagal Sinkronisasi:", error);
     }
   }, [isLoggedIn]);
 
@@ -96,16 +96,16 @@ function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSubmitting) return; 
+    if (isSubmitting) return;
     setIsSubmitting(true);
 
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     if (formData.type === 'OUT') {
-      const match = inventory.find(i => 
-        i.spk === formData.spk_number.toUpperCase() && 
-        i.rack === formData.rack && 
+      const match = inventory.find(i =>
+        i.spk === formData.spk_number.toUpperCase() &&
+        i.rack === formData.rack &&
         i.size === formData.size
       );
       if (Number(formData.qty) > (match?.stock || 0)) {
@@ -126,12 +126,12 @@ function App() {
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
         operator: formData.operator,
-        waktu_input: waktuLokal 
+        waktu_input: waktuLokal
       });
       alert("✅ Tersimpan!");
       setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0 });
-    } catch (err) { 
-      alert("Gagal Simpan!"); 
+    } catch (err) {
+      alert("Gagal Simpan!");
     } finally {
       setIsSubmitting(false);
     }
@@ -153,9 +153,9 @@ function App() {
     setShowExportModal(false);
   };
 
-  const filteredHistory = rawRecords.filter(r => 
-    r.spk_number?.includes(searchTerm) || 
-    r.style_name?.includes(searchTerm) || 
+  const filteredHistory = rawRecords.filter(r =>
+    r.spk_number?.includes(searchTerm) ||
+    r.style_name?.includes(searchTerm) ||
     r.rack_location?.includes(searchTerm)
   );
 
@@ -178,7 +178,7 @@ function App() {
   if (viewMode === 'TV') return (
     <div style={{ background: '#0a0e27', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #1a237e', paddingBottom: '10px' }}>
-        <h1 style={{ fontSize: '32px', margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} /> MONITORING REAL-TIME UPPER BANK</h1>
+        <h1 style={{ fontSize: '32px', margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} /> MONITORING REAL-TIME SUPERMARKET</h1>
         <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>KEMBALI KE ADMIN</button>
       </div>
       <div style={{ display: 'flex', gap: '20px' }}>
@@ -202,7 +202,7 @@ function App() {
               <div key={i} style={{ padding: '12px', background: '#0a0e27', borderRadius: '8px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
                   <span>{log.waktu_input}</span>
-                  <span style={{fontWeight:'bold', color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</span>
+                  <span style={{ fontWeight: 'bold', color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c' }}>{log.qty_in > 0 ? 'IN' : 'OUT'}</span>
                 </div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', margin: '5px 0' }}>{log.spk_number}</div>
                 <div style={{ fontSize: '13px', color: '#ccc' }}>Qty: {log.qty_in || log.qty_out} | Rak: {log.rack_location}</div>
@@ -228,7 +228,7 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
+        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />SUPERTMARKET CONTROL</h2>
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>🖥️ DASHBOARD TV</button>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}><img src="/Excell.png" alt="" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
@@ -241,20 +241,20 @@ function App() {
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Input / Pengambilan</h3>
             <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
-              <button onClick={() => setFormData({...formData, type:'IN'})} style={{ flex: 1, padding: '10px', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>MASUK</button>
-              <button onClick={() => setFormData({...formData, type:'OUT'})} style={{ flex: 1, padding: '10px', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>KELUAR</button>
+              <button onClick={() => setFormData({ ...formData, type: 'IN' })} style={{ flex: 1, padding: '10px', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>MASUK</button>
+              <button onClick={() => setFormData({ ...formData, type: 'OUT' })} style={{ flex: 1, padding: '10px', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>KELUAR</button>
             </div>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({...formData, spk_number: e.target.value.toUpperCase()})} required />
-              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({...formData, style_name: e.target.value.toUpperCase()})} required />
-              <input style={s.input} placeholder="Size" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} required />
-              <input type="number" style={s.input} placeholder="Qty" value={formData.qty || ''} onChange={e => setFormData({...formData, qty: e.target.value})} required />
-              <select style={s.input} value={formData.rack} onChange={e => setFormData({...formData, rack: e.target.value})} required>
+              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({ ...formData, spk_number: e.target.value.toUpperCase() })} required />
+              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} required />
+              <input style={s.input} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
+              <input type="number" style={s.input} placeholder="Qty" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              <select style={s.input} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Pilih Rak --</option>
                 {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
-              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator: e.target.value})} required />
+              <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
               <button type="submit" disabled={isSubmitting} style={{ ...s.btn, background: isSubmitting ? '#95a5a6' : '#1a237e', padding: '15px' }}>
                 {isSubmitting ? "SEDANG MENYIMPAN..." : "SIMPAN"}
               </button>
@@ -264,11 +264,11 @@ function App() {
 
         <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
-            <input 
-              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box', fontWeight: 'bold' }} 
-              placeholder=" CARI NOMOR SPK / STYLE / RAK..." 
+            <input
+              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box', fontWeight: 'bold' }}
+              placeholder=" CARI NOMOR SPK / STYLE / RAK..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value.toUpperCase())} 
+              onChange={e => setSearchTerm(e.target.value.toUpperCase())}
             />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
               {DAFTAR_RAK.map(rack => {
@@ -279,9 +279,9 @@ function App() {
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>{rack} ({total} prs)</div>
                     {items.map((it, idx) => (
                       <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}>
-                        <strong>{it.spk}</strong><br/>
-                        {it.style}<br/>
-                        <span style={{color: '#1a237e', fontWeight: 'bold'}}>Sz: {it.size}</span>
+                        <strong>{it.spk}</strong><br />
+                        {it.style}<br />
+                        <span style={{ color: '#1a237e', fontWeight: 'bold' }}>Sz: {it.size}</span>
                         <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Qty: {it.stock}</div>
                       </div>
                     ))}
@@ -310,7 +310,7 @@ function App() {
                     <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={s.td}>{r.waktu_input}</td>
                       <td style={s.td}>{r.operator}</td>
-                      <td style={s.td}><strong>{r.spk_number}</strong><br/>{r.style_name}</td>
+                      <td style={s.td}><strong>{r.spk_number}</strong><br />{r.style_name}</td>
                       <td style={s.td}>{r.size}</td>
                       <td style={{ ...s.td, color: r.qty_in > 0 ? 'green' : 'red', fontWeight: 'bold' }}>
                         {r.qty_in > 0 ? `+${r.qty_in}` : `-${r.qty_out}`}
