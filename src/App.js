@@ -174,42 +174,56 @@ function App() {
     </div>
   );
 
-  // --- MODE TV DASHBOARD ---
+  // --- MODE TV DASHBOARD (ALA BURSA SAHAM) ---
   if (viewMode === 'TV') return (
-    <div style={{ background: '#0a0e27', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #1a237e', paddingBottom: '10px' }}>
-        <h1 style={{ fontSize: '32px', margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} /> MONITORING REAL-TIME SUPERMARKET</h1>
-        <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>KEMBALI KE ADMIN</button>
+    <div style={{ background: '#050714', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'monospace', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', background: '#0a0e27', padding: '15px', borderRadius: '10px', borderBottom: '3px solid #3498db' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}><img src="/logo.png" alt="logo" style={{ width: '24px', height: '24px', marginRight: '8px' }} /> REAL-TIME STOCK TICKER</h1>
+          <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>LAST UPDATE: {new Date().toLocaleTimeString()}</p>
+        </div>
+        <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT MODE TV</button>
       </div>
-      <div style={{ display: 'flex', gap: '20px' }}>
+
+      <div style={{ display: 'flex', gap: '20px', height: '80vh' }}>
+        {/* GRID RAK */}
         <div style={{ flex: 2.5, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
             const total = items.reduce((a, b) => a + b.stock, 0);
             return (
-              <div key={rack} style={{ background: '#161b33', padding: '15px', borderRadius: '12px', border: total > 0 ? '2px solid #3498db' : '1px solid #333', textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3498db' }}>{rack}</div>
-                <div style={{ fontSize: '48px', fontWeight: 'bold', margin: '10px 0' }}>{total}</div>
-                <div style={{ fontSize: '14px', color: '#888' }}>{items.length} SPK AKTIF</div>
+              <div key={rack} style={{ background: '#161b33', padding: '20px', borderRadius: '8px', border: total > 0 ? '1px solid #3498db' : '1px solid #222', textAlign: 'center', boxShadow: total > 0 ? '0 0 10px rgba(52, 152, 219, 0.3)' : 'none' }}>
+                <div style={{ fontSize: '18px', color: '#3498db', fontWeight: 'bold' }}>{rack}</div>
+                <div style={{ fontSize: '55px', fontWeight: 'bold', margin: '10px 0' }}>{total}</div>
+                <div style={{ fontSize: '12px', color: '#888' }}>{items.length} ACTIVE SPK</div>
               </div>
             );
           })}
         </div>
-        <div style={{ flex: 1, background: '#161b33', padding: '20px', borderRadius: '15px', maxHeight: '85vh', overflowY: 'hidden' }}>
-          <h2 style={{ color: '#2ecc71', borderBottom: '1px solid #333', paddingBottom: '10px', marginTop: 0 }}>LIVE ACTIVITY</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {rawRecords.slice(0, 7).map((log, i) => (
-              <div key={i} style={{ padding: '12px', background: '#0a0e27', borderRadius: '8px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
-                  <span>{log.waktu_input}</span>
-                  <span style={{ fontWeight: 'bold', color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c' }}>{log.qty_in > 0 ? 'IN' : 'OUT'}</span>
-                </div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', margin: '5px 0' }}>{log.spk_number}</div>
-                <div style={{ fontSize: '13px', color: '#ccc' }}>Qty: {log.qty_in || log.qty_out} | Rak: {log.rack_location}</div>
-              </div>
-            ))}
+
+        {/* LIVE ACTIVITY TICKER (AUTO SCROLL) */}
+        <div style={{ flex: 1, background: '#0a0e27', borderRadius: '10px', border: '1px solid #1a237e', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '15px', background: '#1a237e', fontWeight: 'bold' }}>LIVE TRANSACTION FEED</div>
+          <div className="ticker-container" style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+             <style>{`.ticker-container::-webkit-scrollbar { width: 4px; } .ticker-container::-webkit-scrollbar-thumb { background: #3498db; }`}</style>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {rawRecords.map((log, i) => (
+                  <div key={i} style={{ padding: '10px', background: '#161b33', borderRadius: '5px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888' }}>
+                      <span>{log.waktu_input}</span>
+                      <span style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? '▲ IN' : '▼ OUT'}</span>
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{log.spk_number}</div>
+                    <div style={{ fontSize: '12px' }}>QTY: {log.qty_in || log.qty_out} | RAK: {log.rack_location}</div>
+                  </div>
+                ))}
+             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#1a237e', padding: '5px' }}>
+         <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}>⚠️ MONITORING AKTIF | TOTAL UNIT TERSEDIA DI SEMUA RAK: {inventory.reduce((a,b)=>a+b.stock, 0)} PRS | PASTIKAN OPERATOR MENGINPUT DATA DENGAN BENAR </marquee>
       </div>
     </div>
   );
