@@ -188,7 +188,7 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
+        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />MARKET SABLON CONTROL</h2>
         <div>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}><img src="/Excell.png" alt="Export" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
           <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>KELUAR</button>
