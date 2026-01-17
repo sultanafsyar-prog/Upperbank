@@ -71,10 +71,15 @@ function App() {
           };
         }
         acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
+        
         if (curr.target_qty > 0) acc[key].target = curr.target_qty;
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date; 
-        const area = curr.destination || curr.source_from;
-        if (area) acc[key].last_area = area;
+        
+        const currentArea = curr.destination || curr.source_from;
+        if (currentArea) {
+            acc[key].last_area = currentArea;
+        }
+
         return acc;
       }, {});
       setInventory(Object.values(summary).filter(i => i.stock !== 0));
@@ -154,7 +159,6 @@ function App() {
     setShowExportModal(false);
   };
 
-  const filteredHistory = rawRecords.filter(r => r.spk_number?.includes(searchTerm) || r.style_name?.includes(searchTerm) || r.rack_location?.includes(searchTerm));
   const tglHariIni = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
   const logsHariIni = rawRecords.filter(r => r.waktu_input?.startsWith(tglHariIni));
   const inToday = logsHariIni.reduce((acc, curr) => acc + (Number(curr.qty_in) || 0), 0);
@@ -177,8 +181,10 @@ function App() {
     <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', color: 'white', fontFamily: 'sans-serif', overflow: 'hidden' }}>
        <style>{`
         @keyframes pulse-glow { 0% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } 50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.5); } 100% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } }
+        @keyframes blink-red { 0% { opacity: 1; color: #ff3d00; } 50% { opacity: 0.3; color: #fff; } 100% { opacity: 1; color: #ff3d00; } }
         .glass-card { background: rgba(22, 27, 34, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 12px; }
         .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
+        .blink-urgent { animation: blink-red 1s infinite; font-weight: 900 !important; }
         .ticker-container::-webkit-scrollbar { width: 6px; }
         .ticker-container::-webkit-scrollbar-thumb { background: #3498db; border-radius: 10px; }
         .progress-bg { background: #111; height: 12px; border-radius: 6px; margin: 8px 0; overflow: hidden; border: 1px solid #333; }
@@ -207,6 +213,11 @@ function App() {
         <div style={{ flex: 3, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
+            const sortedItems = [...items].sort((a, b) => {
+                if (!a.xfd) return 1;
+                if (!b.xfd) return -1;
+                return a.xfd.localeCompare(b.xfd);
+            });
             const total = items.reduce((a, b) => a + b.stock, 0);
             return (
               <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '12px', display: 'flex', flexDirection: 'column' }}>
@@ -215,7 +226,7 @@ function App() {
                   <span style={{ fontSize: '18px', background: '#3498db', color: '#000', padding: '2px 10px', borderRadius: '20px', fontWeight: 'bold' }}>{total}</span>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                  {items.map((it, idx) => {
+                  {sortedItems.map((it, idx) => {
                     const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
                     const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
                     return (
@@ -232,9 +243,11 @@ function App() {
                         <div className="progress-bg">
                            <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor, boxShadow: percent >= 100 ? '0 0 10px #2ecc71' : 'none' }}></div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold' }}>
                           <span style={{ color: '#aaa' }}>SZ: {it.size} | {it.style.substring(0,10)}</span>
-                          <span style={{ color: '#3498db' }}>TO: {it.last_area || '-'}</span>
+                          <span className={percent >= 100 ? 'blink-urgent' : ''} style={{ color: '#3498db', background: percent >= 100 ? 'rgba(255, 61, 0, 0.1)' : 'rgba(52, 152, 219, 0.1)', padding: '0 5px', borderRadius: '3px' }}>
+                            TO: {it.last_area || '-'}
+                          </span>
                         </div>
                       </div>
                     );
@@ -321,19 +334,27 @@ function App() {
 
         <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
-            <input style={{ width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box', fontSize: '16px' }} placeholder="🔍 CARI SPK, STYLE, ATAU RAK..." value={searchTerm} onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
+            <input 
+              style={{ width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box', fontSize: '16px' }} 
+              placeholder="🔍 CARI SPK, STYLE, RAK, ATAU TANGGAL XFD (Contoh: 25 Jan)..." 
+              value={searchTerm} 
+              onChange={e => setSearchTerm(e.target.value.toUpperCase())} 
+            />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
               {DAFTAR_RAK.map(rack => {
-                const items = inventory.filter(i => i.rack === rack && i.spk.includes(searchTerm));
+                const items = inventory.filter(i => 
+                  i.rack === rack && 
+                  (i.spk.includes(searchTerm) || i.style.includes(searchTerm) || i.xfd.includes(searchTerm))
+                );
                 const total = items.reduce((a, b) => a + b.stock, 0);
                 return (
                   <div key={rack} style={{ border: '1px solid #eee', padding: '12px', borderRadius: '10px', background: total > 0 ? '#fff' : '#fafafa', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px', fontSize: '18px', color: '#1a237e' }}>{rack} <span style={{fontSize:'14px', color:'#666'}}>({total})</span></div>
                     {items.map((it, idx) => (
                       <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '12px', marginBottom: '8px', padding: '8px', background: '#f8f9fa', borderRadius: '6px', cursor: 'pointer', border: '1px solid #eee' }}>
-                        <div style={{display:'flex', justifyContent:'space-between'}}><strong>{it.spk}</strong> <span style={{color:'#e67e22'}}>{it.xfd}</span></div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}><strong>{it.spk}</strong> <span style={{color:'#e67e22', fontWeight:'bold'}}>{it.xfd}</span></div>
                         <div style={{marginTop:'4px'}}>Stok: <strong>{it.stock}</strong>/{it.target} | Sz: {it.size}</div>
-                        <div style={{ color: '#3498db', fontSize: '10px', marginTop:'2px' }}>Tujuan: {it.last_area}</div>
+                        <div style={{ color: '#3498db', fontSize: '10px', marginTop:'4px', fontWeight: 'bold', borderTop: '1px dashed #ccc', paddingTop: '4px' }}>Tujuan: {it.last_area || '-'}</div>
                       </div>
                     ))}
                   </div>
