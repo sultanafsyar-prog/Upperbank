@@ -18,8 +18,10 @@ function App() {
   const [rawRecords, setRawRecords] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
+  
   const [formData, setFormData] = useState({
-    spk_number: '', style_name: '', size: '', qty: 0,
+    spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0,
+    xfd_date: '', // Fitur Baru: XFD
     type: 'IN', source_dest: '', rack: '', operator: ''
   });
 
@@ -62,10 +64,17 @@ function App() {
             style: curr.style_name,
             size: curr.size,
             rack: curr.rack_location,
-            stock: 0
+            stock: 0,
+            target: 0,
+            xfd: '', // Fitur Baru
+            last_area: ''
           };
         }
         acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
+        if (curr.target_qty > 0) acc[key].target = curr.target_qty;
+        if (curr.xfd_date) acc[key].xfd = curr.xfd_date; // Ambil XFD terbaru
+        acc[key].last_area = curr.destination || curr.source_from;
+        
         return acc;
       }, {});
 
@@ -90,6 +99,8 @@ function App() {
       style_name: item.style,
       size: item.size,
       rack: item.rack,
+      target_qty: item.target,
+      xfd_date: item.xfd,
       type: 'OUT'
     });
   };
@@ -102,7 +113,6 @@ function App() {
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
-    // VALIDASI STOK (FITUR KEMBALI)
     if (formData.type === 'OUT') {
       const match = inventory.find(i =>
         i.spk === formData.spk_number.toUpperCase() &&
@@ -123,6 +133,8 @@ function App() {
         size: formData.size,
         qty_in: formData.type === 'IN' ? Number(formData.qty) : 0,
         qty_out: formData.type === 'OUT' ? Number(formData.qty) : 0,
+        target_qty: Number(formData.target_qty),
+        xfd_date: formData.xfd_date, // Simpan XFD
         source_from: formData.type === 'IN' ? formData.source_dest : '',
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
@@ -130,7 +142,7 @@ function App() {
         waktu_input: waktuLokal
       });
       alert("✅ Tersimpan!");
-      setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0 });
+      setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0, xfd_date: '' });
     } catch (err) {
       alert("Gagal Simpan!");
     } finally {
@@ -146,7 +158,8 @@ function App() {
     }
     const worksheet = XLSX.utils.json_to_sheet(data.map(r => ({
       "Waktu": r.waktu_input, "Operator": r.operator, "Tipe": r.qty_in > 0 ? "MASUK" : "KELUAR",
-      "SPK": r.spk_number, "Style": r.style_name, "Size": r.size, "Qty": r.qty_in || r.qty_out, "Rak": r.rack_location
+      "SPK": r.spk_number, "Style": r.style_name, "Size": r.size, "Qty": r.qty_in || r.qty_out, 
+      "Target": r.target_qty, "XFD": r.xfd_date, "Rak": r.rack_location, "Area": r.destination || r.source_from
     })));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan");
@@ -180,7 +193,6 @@ function App() {
     </div>
   );
 
-  // --- VIEW: TV DASHBOARD (STOCK MARKET THEME) ---
   if (viewMode === 'TV') return (
     <div style={{ background: '#050714', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'monospace', overflow: 'hidden' }}>
        <style>{`
@@ -190,15 +202,15 @@ function App() {
         .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
         .ticker-container::-webkit-scrollbar { width: 4px; }
         .ticker-container::-webkit-scrollbar-thumb { background: #3498db; }
+        .progress-bg { background: #111; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden; }
+        .progress-fill { height: 100%; transition: width 0.5s ease, background 0.5s ease; }
       `}</style>
 
-      {/* HEADER GAYA SAHAM */}
       <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 30px', marginBottom: '20px', borderBottom: '3px solid #3498db' }}>
         <div>
-          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}><img src="/logo.png" alt="Stock" width="30" height="30" /> REAL-TIME STOCK TICKER</h1>
+          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}>REAL-TIME STOCK TICKER</h1>
           <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>LAST UPDATE: {new Date().toLocaleTimeString()}</p>
         </div>
-        
         <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '11px', color: '#2ecc71' }}>IN TODAY</div>
@@ -213,7 +225,6 @@ function App() {
       </div>
 
       <div style={{ display: 'flex', gap: '20px', height: '75vh' }}>
-        {/* GRID RAK DENGAN DETAIL */}
         <div style={{ flex: 3, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
@@ -224,24 +235,32 @@ function App() {
                   <span style={{ fontSize: '20px', color: '#3498db', fontWeight: 'bold' }}>{rack}</span>
                   <span style={{ fontSize: '16px', background: '#1a237e', padding: '2px 8px', borderRadius: '4px' }}>{total} prs</span>
                 </div>
-                
                 <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                  {items.map((it, idx) => (
-                    <div key={idx} style={{ padding: '8px 0', borderBottom: '1px solid #222', fontSize: '11px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3498db' }}>
-                        <strong>{it.spk}</strong>
-                        <strong style={{color: '#fff'}}>{it.stock}</strong>
+                  {items.map((it, idx) => {
+                    const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
+                    const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
+                    return (
+                      <div key={idx} style={{ padding: '8px 0', borderBottom: '1px solid #222', fontSize: '11px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3498db' }}>
+                          <strong>{it.spk} <span style={{color:'#888', fontSize:'9px'}}>📅 {it.xfd}</span></strong>
+                          <strong style={{color: '#fff'}}>{it.stock}/{it.target || '-'}</strong>
+                        </div>
+                        <div className="progress-bg">
+                           <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
+                        </div>
+                        <div style={{ color: '#888', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>SZ: {it.size} | {percent.toFixed(0)}%</span>
+                          <span style={{ color: barColor }}>Area: {it.last_area}</span>
+                        </div>
                       </div>
-                      <div style={{ color: '#888' }}>{it.style} | SZ: {it.size}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* LOG AKTIVITAS */}
         <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid #1a237e' }}>
           <div style={{ padding: '15px', background: '#1a237e', fontWeight: 'bold' }}>LIVE TRANSACTION FEED</div>
           <div className="ticker-container" style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
@@ -252,20 +271,19 @@ function App() {
                   <span style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? '▲ IN' : '▼ OUT'}</span>
                 </div>
                 <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '4px 0' }}>{log.spk_number}</div>
+                <div style={{ fontSize: '11px' }}>XFD: {log.xfd_date || '-'} | Area: {log.destination || log.source_from || '-'}</div>
                 <div style={{ fontSize: '12px' }}>QTY: {log.qty_in || log.qty_out} | RAK: {log.rack_location}</div>
               </div>
             ))}
           </div>
         </div>
       </div>
-
       <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#1a237e', padding: '5px' }}>
-        <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}> TOTAL UNIT TERSEDIA: {inventory.reduce((a,b)=>a+b.stock, 0)} PRS | MONITORING AKTIF | HARAP INPUT DATA DENGAN TELITI </marquee>
+        <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}> MONITORING AKTIF | WARNA BAR: KUNING (BELUM AMAN), BIRU (PROSES), HIJAU (SELESAI) </marquee>
       </div>
     </div>
   );
 
-  // --- VIEW: ADMIN MODE (ORIGINAL + ALL FEATURES) ---
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       {showExportModal && (
@@ -280,7 +298,7 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" width="30" height="30" /> SUPERTMARKET CONTROL</h2>
+        <h2 style={{ margin: 0 }}>SUPERTMARKET CONTROL</h2>
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD VIEW</button>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}>EXPORT EXCEL</button>
@@ -289,7 +307,6 @@ function App() {
       </nav>
 
       <div style={{ display: 'flex', gap: '20px' }}>
-        {/* FORM INPUT */}
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Input / Pengambilan</h3>
@@ -300,13 +317,19 @@ function App() {
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({ ...formData, spk_number: e.target.value.toUpperCase() })} required />
               <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} required />
-              <input style={s.input} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
-              <input type="number" style={s.input} placeholder="Qty" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input style={{...s.input, flex: 1}} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
+                <input type="text" style={{...s.input, flex: 1}} placeholder="XFD (Tgl/Bln)" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input type="number" style={{...s.input, flex: 1}} placeholder="Target" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
+                <input type="number" style={{...s.input, flex: 1}} placeholder="Actual Qty" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              </div>
               <select style={s.input} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Pilih Rak --</option>
                 {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Asal/Tujuan Area" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
               <button type="submit" disabled={isSubmitting} style={{ ...s.btn, background: isSubmitting ? '#95a5a6' : '#1a237e', padding: '15px' }}>
                 {isSubmitting ? "SEDANG MENYIMPAN..." : "SIMPAN"}
@@ -315,7 +338,6 @@ function App() {
           </div>
         </div>
 
-        {/* DISPLAY STOK RAK */}
         <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <input
@@ -333,9 +355,9 @@ function App() {
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>{rack} ({total} prs)</div>
                     {items.map((it, idx) => (
                       <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}>
-                        <strong>{it.spk}</strong><br />
-                        {it.style} | <span style={{ color: '#1a237e' }}>Sz: {it.size}</span>
-                        <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Qty: {it.stock}</div>
+                        <strong>{it.spk}</strong> <span style={{fontSize:'9px', color:'#888'}}>📅{it.xfd}</span><br />
+                        Stock: {it.stock}/{it.target || '-'} | Area: {it.last_area}
+                        <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Sz: {it.size}</div>
                       </div>
                     ))}
                   </div>
@@ -344,7 +366,6 @@ function App() {
             </div>
           </div>
 
-          {/* TABEL LOG */}
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3 style={{ marginTop: 0 }}>Log Transaksi (Tersaring)</h3>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -353,10 +374,10 @@ function App() {
                   <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
                     <th style={s.th}>Waktu</th>
                     <th style={s.th}>Op</th>
-                    <th style={s.th}>SPK / Style</th>
+                    <th style={s.th}>SPK / XFD</th>
                     <th style={s.th}>Sz</th>
                     <th style={s.th}>Qty</th>
-                    <th style={s.th}>Rak</th>
+                    <th style={s.th}>Area</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -364,12 +385,12 @@ function App() {
                     <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={s.td}>{r.waktu_input}</td>
                       <td style={s.td}>{r.operator}</td>
-                      <td style={s.td}><strong>{r.spk_number}</strong><br />{r.style_name}</td>
+                      <td style={s.td}><strong>{r.spk_number}</strong><br /><span style={{fontSize:'10px', color:'#666'}}>XFD: {r.xfd_date}</span></td>
                       <td style={s.td}>{r.size}</td>
                       <td style={{ ...s.td, color: r.qty_in > 0 ? 'green' : 'red', fontWeight: 'bold' }}>
                         {r.qty_in > 0 ? `+${r.qty_in}` : `-${r.qty_out}`}
                       </td>
-                      <td style={s.td}>{r.rack_location}</td>
+                      <td style={s.td}>{r.destination || r.source_from}</td>
                     </tr>
                   ))}
                 </tbody>
