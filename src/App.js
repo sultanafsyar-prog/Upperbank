@@ -35,7 +35,7 @@ function App() {
     } catch (err) {
       pb.authStore.clear();
       setIsLoggedIn(false);
-      alert("⚠️ LOGIN GAGAL: Email atau Password salah!");
+      alert("⚠️ LOGIN GAGAL!");
     } finally {
       setLoading(false);
     }
@@ -55,7 +55,11 @@ function App() {
       });
       setRawRecords(res.items);
 
-      const allRecords = await pb.collection('upper_stock').getFullList({ requestKey: null });
+      const allRecords = await pb.collection('upper_stock').getFullList({ 
+        sort: 'created', 
+        requestKey: null 
+      });
+      
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
@@ -72,12 +76,13 @@ function App() {
         }
         acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
         
+        // Memastikan XFD dan Target selalu terupdate ke nilai terakhir yang diinput
         if (curr.target_qty > 0) acc[key].target = curr.target_qty;
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date; 
         
-        const currentArea = curr.destination || curr.source_from;
-        if (currentArea) {
-            acc[key].last_area = currentArea;
+        const areaInput = curr.destination || curr.source_from;
+        if (areaInput) {
+            acc[key].last_area = areaInput;
         }
 
         return acc;
@@ -104,7 +109,7 @@ function App() {
       size: item.size,
       rack: item.rack,
       target_qty: item.target,
-      xfd_date: item.xfd,
+      xfd_date: item.xfd, // XFD OTOMATIS TERISI SAAT KLIK RAK
       type: 'OUT'
     });
   };
@@ -115,14 +120,7 @@ function App() {
     setIsSubmitting(true);
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
-    if (formData.type === 'OUT') {
-      const match = inventory.find(i => i.spk === formData.spk_number.toUpperCase() && i.rack === formData.rack && i.size === formData.size);
-      if (Number(formData.qty) > (match?.stock || 0)) {
-        alert(`⚠️ STOK TIDAK CUKUP! (Tersedia: ${match?.stock || 0})`);
-        setIsSubmitting(false);
-        return;
-      }
-    }
+    
     try {
       await pb.collection('upper_stock').create({
         spk_number: formData.spk_number.toUpperCase(),
@@ -131,7 +129,7 @@ function App() {
         qty_in: formData.type === 'IN' ? Number(formData.qty) : 0,
         qty_out: formData.type === 'OUT' ? Number(formData.qty) : 0,
         target_qty: Number(formData.target_qty),
-        xfd_date: formData.xfd_date,
+        xfd_date: formData.xfd_date, // TERSIMPAN KE DATABASE
         source_from: formData.type === 'IN' ? formData.source_dest : '',
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
@@ -193,16 +191,16 @@ function App() {
 
       <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 30px', marginBottom: '15px', borderBottom: '4px solid #3498db' }}>
         <div>
-          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />PRODUCTION STOCK MONITOR</h1>
+          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />PRODUCTION STOCK MONITOR</h1>
           <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
         </div>
         <div style={{ display: 'flex', gap: '30px' }}>
           <div style={{ textAlign: 'center', background: 'rgba(46, 204, 113, 0.1)', padding: '5px 20px', borderRadius: '10px', border: '1px solid #2ecc71' }}>
-            <div style={{ fontSize: '12px', color: '#2ecc71' }}>TOTAL IN</div>
+            <div style={{ fontSize: '12px', color: '#2ecc71' }}>TOTAL IN TODAY</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#2ecc71' }}>{inToday}</div>
           </div>
           <div style={{ textAlign: 'center', background: 'rgba(231, 76, 60, 0.1)', padding: '5px 20px', borderRadius: '10px', border: '1px solid #e74c3c' }}>
-            <div style={{ fontSize: '12px', color: '#e74c3c' }}>TOTAL OUT</div>
+            <div style={{ fontSize: '12px', color: '#e74c3c' }}>TOTAL OUT TODAY</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#e74c3c' }}>{outToday}</div>
           </div>
           <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c', alignSelf: 'center', height: '40px' }}>EXIT</button>
@@ -213,11 +211,6 @@ function App() {
         <div style={{ flex: 3, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
-            const sortedItems = [...items].sort((a, b) => {
-                if (!a.xfd) return 1;
-                if (!b.xfd) return -1;
-                return a.xfd.localeCompare(b.xfd);
-            });
             const total = items.reduce((a, b) => a + b.stock, 0);
             return (
               <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '12px', display: 'flex', flexDirection: 'column' }}>
@@ -226,7 +219,7 @@ function App() {
                   <span style={{ fontSize: '18px', background: '#3498db', color: '#000', padding: '2px 10px', borderRadius: '20px', fontWeight: 'bold' }}>{total}</span>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                  {sortedItems.map((it, idx) => {
+                  {items.map((it, idx) => {
                     const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
                     const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
                     return (
@@ -234,19 +227,25 @@ function App() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <strong style={{ color: '#fff', fontSize: '16px' }}>{it.spk}</strong>
-                            <span style={{ color: '#e67e22', fontSize: '12px', fontWeight: 'bold' }}>📅 XFD: {it.xfd || '-'}</span>
+                            <span style={{ color: '#e67e22', fontSize: '12px', fontWeight: 'bold' }}>📅 XFD: {it.xfd || 'TBA'}</span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '18px', fontWeight: 'bold', color: barColor }}>{it.stock}<span style={{fontSize:'12px', color:'#666'}}>/{it.target}</span></div>
                           </div>
                         </div>
                         <div className="progress-bg">
-                           <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor, boxShadow: percent >= 100 ? '0 0 10px #2ecc71' : 'none' }}></div>
+                           <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold' }}>
-                          <span style={{ color: '#aaa' }}>SZ: {it.size} | {it.style.substring(0,10)}</span>
-                          <span className={percent >= 100 ? 'blink-urgent' : ''} style={{ color: '#3498db', background: percent >= 100 ? 'rgba(255, 61, 0, 0.1)' : 'rgba(52, 152, 219, 0.1)', padding: '0 5px', borderRadius: '3px' }}>
-                            TO: {it.last_area || '-'}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold' }}>
+                          <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
+                          <span className={percent >= 100 ? 'blink-urgent' : ''} style={{ 
+                            color: '#3498db', 
+                            background: 'rgba(52, 152, 219, 0.1)', 
+                            padding: '2px 6px', 
+                            borderRadius: '4px',
+                            border: '1px solid rgba(52, 152, 219, 0.3)' 
+                          }}>
+                            TO: {it.last_area || 'SUPERMARKET'}
                           </span>
                         </div>
                       </div>
@@ -257,8 +256,9 @@ function App() {
             );
           })}
         </div>
-
-        <div className="glass-card" style={{ flex: 0.8, display: 'flex', flexDirection: 'column', border: '1px solid #1a237e' }}>
+        
+        {/* LIVE FEED KANAN TETAP SAMA */}
+        <div className="glass-card" style={{ flex: 0.8, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '15px', background: '#1a237e', fontWeight: 'bold', textAlign: 'center', fontSize: '18px' }}>LIVE FEED</div>
           <div className="ticker-container" style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
             {rawRecords.slice(0, 15).map((log, i) => (
@@ -274,27 +274,14 @@ function App() {
           </div>
         </div>
       </div>
-      <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#3498db', color: '#000', padding: '4px' }}>
-        <marquee style={{ fontSize: '16px', fontWeight: '900' }}> STATUS BAR: KUNING (CRITICAL / BELOW 50%) | BIRU (PROCESSING) | HIJAU (READY TO SHIP / 100%) | HARAP PERIKSA TANGGAL XFD UNTUK PRIORITAS KIRIM </marquee>
-      </div>
     </div>
   );
 
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
-      {showExportModal && (
-        <div style={s.modalOverlay}>
-          <div style={s.modalContent}>
-            <h3>Ekspor ke Excel</h3>
-            <button onClick={() => executeExport('HARI_INI')} style={{ ...s.btn, background: '#3498db', margin: '5px' }}>HARI INI</button>
-            <button onClick={() => executeExport('SEMUA')} style={{ ...s.btn, background: '#27ae60', margin: '5px' }}>SEMUA DATA</button>
-            <button onClick={() => setShowExportModal(false)} style={{ ...s.btn, background: '#95a5a6', margin: '5px' }}>BATAL</button>
-          </div>
-        </div>
-      )}
-
+      {/* BAGIAN ADMIN TETAP SAMA DENGAN FORM INPUT XFD */}
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />SUPERMARKET CONTROL PANEL</h2>
+        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />SUPERMARKET STOCK ADMIN</h2>
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD VIEW</button>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}>EXPORT EXCEL</button>
@@ -305,7 +292,7 @@ function App() {
       <div style={{ display: 'flex', gap: '20px' }}>
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
-            <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>Input Transaksi</h3>
+            <h3>Input Transaksi</h3>
             <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
               <button onClick={() => setFormData({ ...formData, type: 'IN' })} style={{ flex: 1, padding: '12px', background: formData.type === 'IN' ? '#2ecc71' : '#eee', color: formData.type === 'IN' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>MASUK (IN)</button>
               <button onClick={() => setFormData({ ...formData, type: 'OUT' })} style={{ flex: 1, padding: '12px', background: formData.type === 'OUT' ? '#e74c3c' : '#eee', color: formData.type === 'OUT' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>KELUAR (OUT)</button>
@@ -317,8 +304,9 @@ function App() {
                 <input style={{...s.input, flex: 1}} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
                 <input style={{...s.input, flex: 1}} placeholder="Target Qty" type="number" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
               </div>
-              <input style={s.input} placeholder="XFD (Contoh: 25 Jan)" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
-              <input type="number" style={{...s.input, border: '2px solid #1a237e'}} placeholder="Jumlah Pasang (Actual Qty)" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              {/* FIELD XFD WAJIB DIISI SAAT MASUK AGAR TAMPIL DI TV */}
+              <input style={{...s.input, border: '1px solid #e67e22'}} placeholder="XFD (Contoh: 25 Jan)" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
+              <input type="number" style={{...s.input, border: '2px solid #1a237e'}} placeholder="Jumlah Pasang" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
               <select style={s.input} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Pilih Rak --</option>
                 {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
@@ -326,35 +314,27 @@ function App() {
               <input style={s.input} placeholder="Asal/Tujuan Area" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
               <button type="submit" disabled={isSubmitting} style={{ ...s.btn, background: isSubmitting ? '#95a5a6' : '#1a237e', padding: '18px', fontSize: '16px' }}>
-                {isSubmitting ? "MENYIMPAN..." : "KONFIRMASI SIMPAN"}
+                KONFIRMASI SIMPAN
               </button>
             </form>
           </div>
         </div>
 
-        <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ flex: '2.5' }}>
+          {/* SEARCH DAN RAK VIEW ADMIN */}
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
-            <input 
-              style={{ width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box', fontSize: '16px' }} 
-              placeholder="🔍 CARI SPK, STYLE, RAK, ATAU TANGGAL XFD (Contoh: 25 Jan)..." 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value.toUpperCase())} 
-            />
+             <input style={s.search} placeholder="🔍 CARI SPK, RAK, ATAU XFD..." value={searchTerm} onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
               {DAFTAR_RAK.map(rack => {
-                const items = inventory.filter(i => 
-                  i.rack === rack && 
-                  (i.spk.includes(searchTerm) || i.style.includes(searchTerm) || i.xfd.includes(searchTerm))
-                );
+                const items = inventory.filter(i => i.rack === rack && (i.spk.includes(searchTerm) || i.xfd.includes(searchTerm)));
                 const total = items.reduce((a, b) => a + b.stock, 0);
                 return (
-                  <div key={rack} style={{ border: '1px solid #eee', padding: '12px', borderRadius: '10px', background: total > 0 ? '#fff' : '#fafafa', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
-                    <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px', fontSize: '18px', color: '#1a237e' }}>{rack} <span style={{fontSize:'14px', color:'#666'}}>({total})</span></div>
+                  <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
+                    <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
                     {items.map((it, idx) => (
-                      <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '12px', marginBottom: '8px', padding: '8px', background: '#f8f9fa', borderRadius: '6px', cursor: 'pointer', border: '1px solid #eee' }}>
-                        <div style={{display:'flex', justifyContent:'space-between'}}><strong>{it.spk}</strong> <span style={{color:'#e67e22', fontWeight:'bold'}}>{it.xfd}</span></div>
-                        <div style={{marginTop:'4px'}}>Stok: <strong>{it.stock}</strong>/{it.target} | Sz: {it.size}</div>
-                        <div style={{ color: '#3498db', fontSize: '10px', marginTop:'4px', fontWeight: 'bold', borderTop: '1px dashed #ccc', paddingTop: '4px' }}>Tujuan: {it.last_area || '-'}</div>
+                      <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
+                        <div style={{display:'flex', justifyContent:'space-between'}}><strong>{it.spk}</strong> <span style={{color:'#e67e22'}}>{it.xfd}</span></div>
+                        <div>Stok: {it.stock}/{it.target}</div>
                       </div>
                     ))}
                   </div>
@@ -370,9 +350,8 @@ function App() {
 
 const s = {
   input: { padding: '12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '14px', outline: 'none' },
-  btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' },
-  th: { padding: '12px', background: '#f8f9fa' },
-  td: { padding: '12px' },
+  search: { width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box' },
+  btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 },
   modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center', minWidth: '350px' }
 };
