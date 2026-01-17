@@ -62,6 +62,7 @@ function App() {
       
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
+
         if (!acc[key]) {
           acc[key] = {
             spk: curr.spk_number,
@@ -71,21 +72,50 @@ function App() {
             stock: 0,
             target: 0,
             xfd: '',
-            last_area: '' 
+            // --- FIX: pisahkan tujuan OUT dan asal IN ---
+            last_from: '',        // asal terakhir (IN)
+            last_to: '',          // tujuan terakhir (OUT)
+            last_move: '',        // transaksi terakhir: 'IN' / 'OUT'
+            last_created: '',     // created terakhir untuk key ini
+            last_out_created: ''  // created terakhir khusus OUT
           };
         }
-        acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
-        
-        if (curr.target_qty > 0) acc[key].target = curr.target_qty;
-        if (curr.xfd_date) acc[key].xfd = curr.xfd_date; 
-        
-        const areaInput = curr.destination || curr.source_from;
-        if (areaInput) {
-            acc[key].last_area = areaInput;
+
+        const qtyIn = Number(curr.qty_in || 0);
+        const qtyOut = Number(curr.qty_out || 0);
+
+        // stock akumulasi
+        acc[key].stock += (qtyIn - qtyOut);
+
+        // target & xfd update
+        if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
+        if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
+
+        // urutan transaksi berdasarkan created (ISO string)
+        const created = curr.created || '';
+
+        // simpan transaksi terakhir (untuk label IN/OUT terakhir)
+        if (!acc[key].last_created || created > acc[key].last_created) {
+          acc[key].last_created = created;
+          acc[key].last_move = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : acc[key].last_move);
+        }
+
+        // simpan asal terakhir jika IN
+        if (qtyIn > 0 && curr.source_from) {
+          acc[key].last_from = curr.source_from;
+        }
+
+        // simpan tujuan terakhir jika OUT (jangan ketimpa IN)
+        if (qtyOut > 0 && curr.destination) {
+          if (!acc[key].last_out_created || created > acc[key].last_out_created) {
+            acc[key].last_out_created = created;
+            acc[key].last_to = curr.destination;
+          }
         }
 
         return acc;
       }, {});
+
       setInventory(Object.values(summary).filter(i => i.stock > 0));
     } catch (error) {
       console.error("Gagal Sinkronisasi:", error);
@@ -104,6 +134,7 @@ function App() {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
+
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
     
@@ -122,6 +153,7 @@ function App() {
         operator: formData.operator,
         waktu_input: waktuLokal
       });
+
       alert("✅ Data Berhasil Disimpan!");
       setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0, xfd_date: '', source_dest: '' });
     } catch (err) { 
@@ -173,7 +205,7 @@ function App() {
 
       <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 30px', marginBottom: '15px', borderBottom: '4px solid #3498db' }}>
         <div>
-          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />PRODUCTION STOCK MONITOR</h1>
+          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />PRODUCTION STOCK MONITOR</h1>
           <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
         </div>
         <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
@@ -198,17 +230,23 @@ function App() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <strong style={{ color: '#fff', fontSize: '16px' }}>{it.spk}</strong>
-                            <span style={{ color: '#e67e22', fontSize: '12px', fontWeight: 'bold' }}>📅 XFD: {it.xfd || '-'}</span>
+                            <span style={{ color: '#e67e22', fontSize: '12px', fontWeight: 'bold' }}>XFD: {it.xfd || '-'}</span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '18px', fontWeight: 'bold', color: barColor }}>{it.stock}<span style={{fontSize:'12px', color:'#666'}}>/{it.target}</span></div>
+                            <div style={{ fontSize: '18px', fontWeight: 'bold', color: barColor }}>
+                              {it.stock}<span style={{fontSize:'12px', color:'#666'}}>/{it.target}</span>
+                            </div>
                           </div>
                         </div>
+
                         <div className="progress-bg">
                            <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
                         </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold' }}>
                           <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
+
+                          {/* FIX: tampilkan tujuan pengiriman OUT terakhir (tidak ketimpa IN) */}
                           <span className={percent >= 100 ? 'blink-urgent' : ''} style={{ 
                             color: '#3498db', 
                             background: 'rgba(52, 152, 219, 0.1)', 
@@ -216,7 +254,7 @@ function App() {
                             borderRadius: '4px',
                             border: '1px solid rgba(52, 152, 219, 0.3)' 
                           }}>
-                            TO: {it.last_area || 'SUPERMARKET'}
+                            TO: {it.last_to || 'SUPERMARKET'}
                           </span>
                         </div>
                       </div>
@@ -286,16 +324,24 @@ function App() {
             />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
               {DAFTAR_RAK.map(rack => {
-                const items = inventory.filter(i => i.rack === rack && (i.spk.includes(searchTerm) || i.xfd.includes(searchTerm)));
+                const items = inventory.filter(i =>
+                  i.rack === rack &&
+                  (i.spk.includes(searchTerm) || i.xfd.includes(searchTerm))
+                );
                 const total = items.reduce((a, b) => a + b.stock, 0);
                 return (
                   <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
                     {items.map((it, idx) => (
                       <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
-                        <div style={{display:'flex', justifyContent:'space-between'}}><strong>{it.spk}</strong> <span style={{color:'#e67e22'}}>{it.xfd}</span></div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <strong>{it.spk}</strong>
+                          <span style={{color:'#e67e22'}}>{it.xfd}</span>
+                        </div>
                         <div>Stok: {it.stock}/{it.target} | Sz: {it.size}</div>
-                        <div style={{color:'#3498db'}}>To: {it.last_area}</div>
+
+                        {/* FIX: tampilkan tujuan OUT terakhir */}
+                        <div style={{color:'#3498db'}}>To: {it.last_to || '-'}</div>
                       </div>
                     ))}
                   </div>
