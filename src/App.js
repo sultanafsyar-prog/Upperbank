@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import PocketBase from 'pocketbase';
 import * as XLSX from 'xlsx';
 
-const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app'); 
+const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
 const DAFTAR_RAK = ["A-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
 
@@ -12,13 +12,16 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState('ADMIN'); 
 
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
+  
   const [formData, setFormData] = useState({
-    spk_number: '', style_name: '', size: '', qty: 0, 
+    spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0,
+    xfd_date: '', // Fitur Baru: XFD
     type: 'IN', source_dest: '', rack: '', operator: ''
   });
 
@@ -30,7 +33,7 @@ function App() {
       setIsLoggedIn(true);
       fetchData();
     } catch (err) {
-      pb.authStore.clear(); // Bersihkan sisa login jika gagal
+      pb.authStore.clear();
       setIsLoggedIn(false);
       alert("⚠️ LOGIN GAGAL: Email atau Password salah!");
     } finally {
@@ -46,31 +49,38 @@ function App() {
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      const res = await pb.collection('upper_stock').getList(1, 100, { 
-        sort: '-created', 
-        requestKey: null 
+      const res = await pb.collection('upper_stock').getList(1, 100, {
+        sort: '-created',
+        requestKey: null
       });
       setRawRecords(res.items);
-      
+
       const allRecords = await pb.collection('upper_stock').getFullList({ requestKey: null });
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
-          acc[key] = { 
-            spk: curr.spk_number, 
-            style: curr.style_name, 
+          acc[key] = {
+            spk: curr.spk_number,
+            style: curr.style_name,
             size: curr.size,
-            rack: curr.rack_location, 
-            stock: 0 
+            rack: curr.rack_location,
+            stock: 0,
+            target: 0,
+            xfd: '', // Fitur Baru
+            last_area: ''
           };
         }
         acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
+        if (curr.target_qty > 0) acc[key].target = curr.target_qty;
+        if (curr.xfd_date) acc[key].xfd = curr.xfd_date; // Ambil XFD terbaru
+        acc[key].last_area = curr.destination || curr.source_from;
+        
         return acc;
       }, {});
 
       setInventory(Object.values(summary).filter(i => i.stock !== 0));
-    } catch (error) { 
-      console.error("Gagal Sinkronisasi:", error); 
+    } catch (error) {
+      console.error("Gagal Sinkronisasi:", error);
     }
   }, [isLoggedIn]);
 
@@ -82,7 +92,6 @@ function App() {
     }
   }, [fetchData, isLoggedIn]);
 
-  // FITUR: KLIK LANGSUNG DI RAK (DIKEMBALIKAN)
   const handlePickFromRack = (item) => {
     setFormData({
       ...formData,
@@ -90,22 +99,24 @@ function App() {
       style_name: item.style,
       size: item.size,
       rack: item.rack,
-      type: 'OUT' // Biasanya klik di rak untuk pengambilan (OUT)
+      target_qty: item.target,
+      xfd_date: item.xfd,
+      type: 'OUT'
     });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSubmitting) return; 
+    if (isSubmitting) return;
     setIsSubmitting(true);
 
     const sekarang = new Date();
     const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     if (formData.type === 'OUT') {
-      const match = inventory.find(i => 
-        i.spk === formData.spk_number.toUpperCase() && 
-        i.rack === formData.rack && 
+      const match = inventory.find(i =>
+        i.spk === formData.spk_number.toUpperCase() &&
+        i.rack === formData.rack &&
         i.size === formData.size
       );
       if (Number(formData.qty) > (match?.stock || 0)) {
@@ -122,16 +133,18 @@ function App() {
         size: formData.size,
         qty_in: formData.type === 'IN' ? Number(formData.qty) : 0,
         qty_out: formData.type === 'OUT' ? Number(formData.qty) : 0,
+        target_qty: Number(formData.target_qty),
+        xfd_date: formData.xfd_date, // Simpan XFD
         source_from: formData.type === 'IN' ? formData.source_dest : '',
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
         operator: formData.operator,
-        waktu_input: waktuLokal 
+        waktu_input: waktuLokal
       });
       alert("✅ Tersimpan!");
-      setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0 });
-    } catch (err) { 
-      alert("Gagal Simpan!"); 
+      setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0, xfd_date: '' });
+    } catch (err) {
+      alert("Gagal Simpan!");
     } finally {
       setIsSubmitting(false);
     }
@@ -145,7 +158,8 @@ function App() {
     }
     const worksheet = XLSX.utils.json_to_sheet(data.map(r => ({
       "Waktu": r.waktu_input, "Operator": r.operator, "Tipe": r.qty_in > 0 ? "MASUK" : "KELUAR",
-      "SPK": r.spk_number, "Style": r.style_name, "Size": r.size, "Qty": r.qty_in || r.qty_out, "Rak": r.rack_location
+      "SPK": r.spk_number, "Style": r.style_name, "Size": r.size, "Qty": r.qty_in || r.qty_out, 
+      "Target": r.target_qty, "XFD": r.xfd_date, "Rak": r.rack_location, "Area": r.destination || r.source_from
     })));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan");
@@ -153,11 +167,16 @@ function App() {
     setShowExportModal(false);
   };
 
-  const filteredHistory = rawRecords.filter(r => 
-    r.spk_number?.includes(searchTerm) || 
-    r.style_name?.includes(searchTerm) || 
+  const filteredHistory = rawRecords.filter(r =>
+    r.spk_number?.includes(searchTerm) ||
+    r.style_name?.includes(searchTerm) ||
     r.rack_location?.includes(searchTerm)
   );
+
+  const tglHariIni = new Date().toLocaleDateString('id-ID').replace(/\//g, '-');
+  const logsHariIni = rawRecords.filter(r => r.waktu_input?.startsWith(tglHariIni));
+  const inToday = logsHariIni.reduce((acc, curr) => acc + (Number(curr.qty_in) || 0), 0);
+  const outToday = logsHariIni.reduce((acc, curr) => acc + (Number(curr.qty_out) || 0), 0);
 
   if (!isLoggedIn) return (
     <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
@@ -170,6 +189,97 @@ function App() {
             {loading ? "MENGECEK..." : "MASUK"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+
+  if (viewMode === 'TV') return (
+    <div style={{ background: '#050714', minHeight: '100vh', padding: '20px', color: 'white', fontFamily: 'monospace', overflow: 'hidden' }}>
+       <style>{`
+        @keyframes pulse-glow { 0% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } 50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.5); } 100% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .glass-card { background: rgba(22, 27, 34, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 12px; }
+        .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
+        .ticker-container::-webkit-scrollbar { width: 4px; }
+        .ticker-container::-webkit-scrollbar-thumb { background: #3498db; }
+        .progress-bg { background: #111; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden; }
+        .progress-fill { height: 100%; transition: width 0.5s ease, background 0.5s ease; }
+      `}</style>
+
+      <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 30px', marginBottom: '20px', borderBottom: '3px solid #3498db' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', margin: 0, color: '#3498db' }}>REAL-TIME STOCK TICKER</h1>
+          <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>LAST UPDATE: {new Date().toLocaleTimeString()}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '40px', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#2ecc71' }}>IN TODAY</div>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#2ecc71', animation: 'blink 2s infinite' }}>▲ {inToday}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#e74c3c' }}>OUT TODAY</div>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#e74c3c', animation: 'blink 2s infinite' }}>▼ {outToday}</div>
+          </div>
+          <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '20px', height: '75vh' }}>
+        <div style={{ flex: 3, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
+          {DAFTAR_RAK.map(rack => {
+            const items = inventory.filter(i => i.rack === rack);
+            const total = items.reduce((a, b) => a + b.stock, 0);
+            return (
+              <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '15px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '20px', color: '#3498db', fontWeight: 'bold' }}>{rack}</span>
+                  <span style={{ fontSize: '16px', background: '#1a237e', padding: '2px 8px', borderRadius: '4px' }}>{total} prs</span>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
+                  {items.map((it, idx) => {
+                    const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
+                    const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
+                    return (
+                      <div key={idx} style={{ padding: '8px 0', borderBottom: '1px solid #222', fontSize: '11px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3498db' }}>
+                          <strong>{it.spk} <span style={{color:'#888', fontSize:'9px'}}>📅 {it.xfd}</span></strong>
+                          <strong style={{color: '#fff'}}>{it.stock}/{it.target || '-'}</strong>
+                        </div>
+                        <div className="progress-bg">
+                           <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
+                        </div>
+                        <div style={{ color: '#888', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>SZ: {it.size} | {percent.toFixed(0)}%</span>
+                          <span style={{ color: barColor }}>Area: {it.last_area}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid #1a237e' }}>
+          <div style={{ padding: '15px', background: '#1a237e', fontWeight: 'bold' }}>LIVE TRANSACTION FEED</div>
+          <div className="ticker-container" style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+            {rawRecords.map((log, i) => (
+              <div key={i} style={{ padding: '10px', background: '#161b33', borderRadius: '5px', marginBottom: '10px', borderLeft: `5px solid ${log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#888' }}>
+                  <span>{log.waktu_input}</span>
+                  <span style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? '▲ IN' : '▼ OUT'}</span>
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', margin: '4px 0' }}>{log.spk_number}</div>
+                <div style={{ fontSize: '11px' }}>XFD: {log.xfd_date || '-'} | Area: {log.destination || log.source_from || '-'}</div>
+                <div style={{ fontSize: '12px' }}>QTY: {log.qty_in || log.qty_out} | RAK: {log.rack_location}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#1a237e', padding: '5px' }}>
+        <marquee style={{ fontSize: '14px', fontWeight: 'bold' }}> MONITORING AKTIF | WARNA BAR: KUNING (BELUM AMAN), BIRU (PROSES), HIJAU (SELESAI) </marquee>
       </div>
     </div>
   );
@@ -188,9 +298,10 @@ function App() {
       )}
 
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{margin:0}}><img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />UPPER BANK CONTROL</h2>
+        <h2 style={{ margin: 0 }}>SUPERTMARKET CONTROL</h2>
         <div>
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}><img src="/Excell.png" alt="Export" style={{ height: '20px', marginRight: '5px' }} />EXPORT EXCEL</button>
+          <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD VIEW</button>
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#27ae60', marginRight: '10px' }}>EXPORT EXCEL</button>
           <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>KELUAR</button>
         </div>
       </nav>
@@ -200,30 +311,27 @@ function App() {
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Input / Pengambilan</h3>
             <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
-              <button onClick={() => setFormData({...formData, type:'IN'})} style={{ flex: 1, padding: '10px', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>MASUK</button>
-              <button onClick={() => setFormData({...formData, type:'OUT'})} style={{ flex: 1, padding: '10px', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>KELUAR</button>
+              <button onClick={() => setFormData({ ...formData, type: 'IN' })} style={{ flex: 1, padding: '10px', background: formData.type === 'IN' ? '#2ecc71' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>MASUK</button>
+              <button onClick={() => setFormData({ ...formData, type: 'OUT' })} style={{ flex: 1, padding: '10px', background: formData.type === 'OUT' ? '#e74c3c' : '#ddd', color: 'white', border: 'none', borderRadius: '5px' }}>KELUAR</button>
             </div>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({...formData, spk_number: e.target.value.toUpperCase()})} required />
-              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({...formData, style_name: e.target.value.toUpperCase()})} required />
-              <input style={s.input} placeholder="Size" value={formData.size} onChange={e => setFormData({...formData, size: e.target.value})} required />
-              <input type="number" style={s.input} placeholder="Qty" value={formData.qty || ''} onChange={e => setFormData({...formData, qty: e.target.value})} required />
-              <select style={s.input} value={formData.rack} onChange={e => setFormData({...formData, rack: e.target.value})} required>
+              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({ ...formData, spk_number: e.target.value.toUpperCase() })} required />
+              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} required />
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input style={{...s.input, flex: 1}} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
+                <input type="text" style={{...s.input, flex: 1}} placeholder="XFD (Tgl/Bln)" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input type="number" style={{...s.input, flex: 1}} placeholder="Target" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
+                <input type="number" style={{...s.input, flex: 1}} placeholder="Actual Qty" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              </div>
+              <select style={s.input} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Pilih Rak --</option>
                 {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
-              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator: e.target.value})} required />
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                style={{ 
-                  ...s.btn, 
-                  background: isSubmitting ? '#95a5a6' : '#1a237e', 
-                  padding: '15px',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer'
-                }}
-              >
+              <input style={s.input} placeholder="Asal/Tujuan Area" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
+              <button type="submit" disabled={isSubmitting} style={{ ...s.btn, background: isSubmitting ? '#95a5a6' : '#1a237e', padding: '15px' }}>
                 {isSubmitting ? "SEDANG MENYIMPAN..." : "SIMPAN"}
               </button>
             </form>
@@ -232,13 +340,12 @@ function App() {
 
         <div style={{ flex: '2.5', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
-            <input 
-              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box', fontWeight: 'bold' }} 
-              placeholder=" CARI NOMOR SPK / STYLE / RAK..." 
+            <input
+              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #1a237e', boxSizing: 'border-box' }}
+              placeholder=" CARI NOMOR SPK / STYLE / RAK..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value.toUpperCase())} 
+              onChange={e => setSearchTerm(e.target.value.toUpperCase())}
             />
-            
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
               {DAFTAR_RAK.map(rack => {
                 const items = inventory.filter(i => i.rack === rack && i.spk.includes(searchTerm));
@@ -247,15 +354,10 @@ function App() {
                   <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '8px', borderTop: `4px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
                     <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>{rack} ({total} prs)</div>
                     {items.map((it, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => handlePickFromRack(it)} // FITUR KLIK RAK DIKEMBALIKAN
-                        style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}
-                      >
-                        <strong>{it.spk}</strong><br/>
-                        {it.style}<br/>
-                        <span style={{color: '#1a237e', fontWeight: 'bold'}}>Sz: {it.size}</span>
-                        <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Qty: {it.stock}</div>
+                      <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '8px', padding: '5px', background: '#f9f9f9', borderRadius: '4px', cursor: 'pointer' }}>
+                        <strong>{it.spk}</strong> <span style={{fontSize:'9px', color:'#888'}}>📅{it.xfd}</span><br />
+                        Stock: {it.stock}/{it.target || '-'} | Area: {it.last_area}
+                        <div style={{ textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>Sz: {it.size}</div>
                       </div>
                     ))}
                   </div>
@@ -272,10 +374,10 @@ function App() {
                   <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
                     <th style={s.th}>Waktu</th>
                     <th style={s.th}>Op</th>
-                    <th style={s.th}>SPK / Style</th>
+                    <th style={s.th}>SPK / XFD</th>
                     <th style={s.th}>Sz</th>
                     <th style={s.th}>Qty</th>
-                    <th style={s.th}>Rak</th>
+                    <th style={s.th}>Area</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -283,12 +385,12 @@ function App() {
                     <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={s.td}>{r.waktu_input}</td>
                       <td style={s.td}>{r.operator}</td>
-                      <td style={s.td}><strong>{r.spk_number}</strong><br/>{r.style_name}</td>
+                      <td style={s.td}><strong>{r.spk_number}</strong><br /><span style={{fontSize:'10px', color:'#666'}}>XFD: {r.xfd_date}</span></td>
                       <td style={s.td}>{r.size}</td>
                       <td style={{ ...s.td, color: r.qty_in > 0 ? 'green' : 'red', fontWeight: 'bold' }}>
                         {r.qty_in > 0 ? `+${r.qty_in}` : `-${r.qty_out}`}
                       </td>
-                      <td style={s.td}>{r.rack_location}</td>
+                      <td style={s.td}>{r.destination || r.source_from}</td>
                     </tr>
                   ))}
                 </tbody>
