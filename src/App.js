@@ -224,9 +224,6 @@ function App() {
       STOCK: it.stock,
       TARGET: it.target,
       XFD: it.xfd,
-      TO_TERAKHIR: it.last_to || '',
-      FROM_TERAKHIR: it.last_from || '',
-      LAST_MOVE: it.last_move || ''
     }));
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -255,15 +252,6 @@ function App() {
   };
 
   // ============================
-  // Helper: total stock per rack (current)
-  // ============================
-  const getCurrentRackTotal = (rack) => {
-    return inventory
-      .filter((i) => i.rack === rack)
-      .reduce((sum, it) => sum + Number(it.stock || 0), 0);
-  };
-
-  // ============================
   // TV MODE UI
   // ============================
   if (viewMode === 'TV') {
@@ -286,54 +274,20 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {group.map((rack) => {
                     const items = inventory.filter((i) => i.rack === rack);
-                    const totalStock = items.reduce((a, b) => a + Number(b.stock || 0), 0);
-                    const totalShortfall = items.reduce((sum, it) => {
-                      const t = Number(it.target || 0);
-                      const s = Number(it.stock || 0);
-                      if (t > 0 && s < t) return sum + (t - s);
-                      return sum;
-                    }, 0);
 
                     return (
                       <div key={rack} className="glass-card" style={{ padding: '10px', display: 'flex', flexDirection: 'column', height: 'calc((80vh - 80px) / 6)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', borderBottom: '1px solid #333', paddingBottom: '6px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '18px', color: '#3498db', fontWeight: 900 }}>{rack}</span>
-                            <span style={{ fontSize: '11px', color: '#aaa', fontWeight: 800 }}>SPK aktif: {items.length}</span>
-                            <span style={{ fontSize: '11px', fontWeight: 900, color: totalShortfall > 0 ? '#f1c40f' : '#2ecc71' }}>
-                              Short: {totalShortfall}
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                            <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>Total: {totalStock}</div>
-                          </div>
-                        </div>
-
-                        <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                          {items.map((it, idx) => {
-                            const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
-                            const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
-
-                            return (
-                              <div key={idx} style={{ padding: '6px 0', borderBottom: '1px solid #222' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <strong style={{ color: '#fff', fontSize: '12px' }}>{it.spk}</strong>
-                                    <span style={{ color: '#e67e22', fontSize: '10px', fontWeight: 'bold' }}>XFD: {it.xfd || '-'}</span>
-                                  </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: barColor }}>
-                                      {it.stock}/{it.target}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="progress-bg">
-                                  <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
-                                </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {items.map((it, idx) => (
+                            <div key={idx} style={{ paddingBottom: '8px', borderBottom: '1px solid #333' }}>
+                              <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                <strong>{it.spk}</strong> - {it.style}
                               </div>
-                            );
-                          })}
+                              <div style={{ fontSize: '12px', color: '#aaa' }}>
+                                Size: {it.size} | Qty: {it.stock} | Target: {it.target} | XFD: {it.xfd}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
