@@ -15,15 +15,16 @@ function App() {
   const [viewMode, setViewMode] = useState('ADMIN'); 
 
   const [inventory, setInventory] = useState([]);
-  const [rawRecords, setRawRecords] = useState([]); // Untuk Export Excel
-  const [recentLogs, setRecentLogs] = useState([]); // Untuk Live Feed TV
+  const [rawRecords, setRawRecords] = useState([]);
+  const [recentLogs, setRecentLogs] = useState([]); 
+  const [dailyStats, setDailyStats] = useState({ in: 0, out: 0 });
   const [searchTerm, setSearchTerm] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
-  const [dailyStats, setDailyStats] = useState({ in: 0, out: 0 });
   
   const [formData, setFormData] = useState({
     spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0,
-    xfd_date: '', type: 'IN', source_dest: '', rack: '', operator: ''
+    xfd_date: '', 
+    type: 'IN', source_dest: '', rack: '', operator: ''
   });
 
   const handleLogin = async (e) => {
@@ -34,20 +35,25 @@ function App() {
       setIsLoggedIn(true);
       fetchData();
     } catch (err) {
+      pb.authStore.clear();
+      setIsLoggedIn(false);
       alert("⚠️ LOGIN GAGAL!");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleLogout = () => {
+    pb.authStore.clear();
+    setIsLoggedIn(false);
+  };
+
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      // Ambil data untuk Raw Records (Export)
       const res = await pb.collection('upper_stock').getList(1, 100, { sort: '-created', requestKey: null });
       setRawRecords(res.items);
 
-      // Ambil semua data untuk kalkulasi stok & Dashboard
       const allRecords = await pb.collection('upper_stock').getFullList({ sort: 'created', requestKey: null });
       
       const today = new Date().toISOString().split('T')[0];
@@ -57,7 +63,6 @@ function App() {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         const recordDate = curr.created.split('T')[0];
 
-        // Hitung statistik hari ini
         if (recordDate === today) {
           stats.in += Number(curr.qty_in || 0);
           stats.out += Number(curr.qty_out || 0);
@@ -101,7 +106,6 @@ function App() {
     }
   }, [fetchData, isLoggedIn]);
 
-  // --- FUNGSI IMPORT EXCEL (DENGAN XFD & TARGET) ---
   const handleImportExcel = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -129,14 +133,13 @@ function App() {
             waktu_input: waktuLokal
           });
         }
-        alert("✅ Import Selesai!");
+        alert("✅ Import Berhasil!");
         fetchData();
       } catch (err) { alert("❌ Gagal Import!"); } finally { setLoading(false); e.target.value = null; }
     };
     reader.readAsBinaryString(file);
   };
 
-  // --- FUNGSI EXPORT EXCEL ---
   const executeExport = (type) => {
     let data = rawRecords;
     if (type === 'HARI_INI') {
@@ -171,23 +174,34 @@ function App() {
     } catch (err) { alert("❌ Gagal!"); } finally { setIsSubmitting(false); }
   };
 
-  // --- UI RENDER (ADMIN & TV) ---
+  const handlePickFromRack = (item) => {
+    setFormData({
+      ...formData,
+      spk_number: item.spk,
+      style_name: item.style,
+      size: item.size,
+      rack: item.rack,
+      target_qty: item.target,
+      xfd_date: item.xfd,
+      type: 'OUT'
+    });
+  };
+
   if (!isLoggedIn) return (
     <div style={s.modalOverlay}><div style={s.modalContent}>
       <h2>LOGIN SYSTEM</h2>
       <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:10}}>
-        <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} />
-        <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} />
-        <button type="submit" style={{...s.btn, background:'#1a237e'}}>MASUK</button>
+        <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
+        <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
+        <button type="submit" disabled={loading} style={{...s.btn, background:'#1a237e'}}>{loading ? "PROSES..." : "MASUK"}</button>
       </form>
     </div></div>
   );
 
   if (viewMode === 'TV') return (
-    <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', color: 'white', fontFamily: 'sans-serif' }}>
-      <style>{`.glass-card { background: rgba(22, 27, 34, 0.8); border-radius: 12px; border: 1px solid #333; padding: 15px; } .ticker { overflow-y: auto; height: 70vh; }`}</style>
-      <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1><img src="/logo.png" alt="Logo" style={{ height: 40 }} /> PRODUCTION MONITOR</h1>
+    <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', color: 'white' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h1><img src="/logo.png" alt="Logo" style={{ height: 40, marginRight: 10 }} />SUPERMARKET PRODUCTION CONTROL</h1>
         <div style={{ display: 'flex', gap: 20 }}>
           <div style={{ color: '#2ecc71' }}>IN: {dailyStats.in}</div>
           <div style={{ color: '#e74c3c' }}>OUT: {dailyStats.out}</div>
@@ -199,27 +213,25 @@ function App() {
           {DAFTAR_RAK.map(rack => {
             const items = inventory.filter(i => i.rack === rack);
             return (
-              <div key={rack} className="glass-card">
-                <h3 style={{ borderBottom: '2px solid #3498db' }}>{rack} ({items.reduce((a, b) => a + b.stock, 0)})</h3>
+              <div key={rack} style={{ background: '#161b22', padding: 10, borderRadius: 8, border: '1px solid #333' }}>
+                <h3 style={{ borderBottom: '2px solid #3498db' }}>{rack}</h3>
                 {items.map((it, idx) => (
                   <div key={idx} style={{ fontSize: 12, marginBottom: 5 }}>
                     <b>{it.spk}</b>: {it.stock}/{it.target} <br/>
-                    <small style={{color:'#3498db'}}>TO: {it.last_to || '-'}</small>
+                    <small style={{color:'#3498db'}}>TO: {it.last_to || 'SUPERMARKET'}</small>
                   </div>
                 ))}
               </div>
             );
           })}
         </div>
-        <div className="glass-card" style={{ flex: 1 }}>
+        <div style={{ flex: 1, background: '#161b22', padding: 10, borderRadius: 8 }}>
           <h3>LIVE FEED</h3>
-          <div className="ticker">
-            {recentLogs.map((log, i) => (
-              <div key={i} style={{ borderBottom: '1px solid #222', padding: 5, fontSize: 12 }}>
-                {log.waktu_input} | {log.spk_number} | {log.qty_in > 0 ? 'IN' : 'OUT'}
-              </div>
-            ))}
-          </div>
+          {recentLogs.map((log, i) => (
+            <div key={i} style={{ borderBottom: '1px solid #222', padding: 5, fontSize: 11 }}>
+              {log.waktu_input} | {log.spk_number} | {log.qty_in > 0 ? 'IN' : 'OUT'}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -235,53 +247,53 @@ function App() {
           <button onClick={() => setShowExportModal(false)} style={{...s.btn, background:'#666', marginLeft:10}}>BATAL</button>
         </div></div>
       )}
-      <nav style={{ background: '#1a237e', color: 'white', padding: 15, borderRadius: 10, display: 'flex', justifyContent: 'space-between' }}>
-        <h2><img src="/logo.png" alt="Logo" style={{ height: 40 }} /> SUPERMARKET CONTROL</h2>
+      <nav style={{ background: '#1a237e', color: 'white', padding: 15, borderRadius: 10, display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h2><img src="/logo.png" alt="Logo" style={{ height: 40, marginRight: 10 }} />STOCK ADMIN</h2>
         <div>
           <label style={{ ...s.btn, background: '#27ae60', cursor: 'pointer', marginRight: 10 }}>
-            IMPORT <input type="file" hidden onChange={handleImportExcel} />
+            {loading ? "PROSES..." : "IMPORT"}
+            <input type="file" hidden onChange={handleImportExcel} />
           </label>
           <button onClick={() => setShowExportModal(true)} style={{...s.btn, background:'#3498db', marginRight:10}}>EXPORT</button>
           <button onClick={() => setViewMode('TV')} style={{...s.btn, background:'#8e44ad'}}>MODE TV</button>
+          <button onClick={handleLogout} style={{...s.btn, background:'#e74c3c', marginLeft:10}}>LOGOUT</button>
         </div>
       </nav>
 
-      <div style={{ display: 'flex', gap: 20, marginTop: 20 }}>
+      <div style={{ display: 'flex', gap: 20 }}>
+        {/* Kolom Input */}
         <div style={{ flex: 1, background: 'white', padding: 20, borderRadius: 12 }}>
-          <h3>Input Data</h3>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{display:'flex', gap:5}}>
               <button type="button" onClick={() => setFormData({...formData, type:'IN'})} style={{flex:1, background:formData.type==='IN'?'#2ecc71':'#eee'}}>IN</button>
               <button type="button" onClick={() => setFormData({...formData, type:'OUT'})} style={{flex:1, background:formData.type==='OUT'?'#e74c3c':'#eee'}}>OUT</button>
             </div>
-            <input style={s.input} placeholder="SPK" value={formData.spk_number} onChange={e => setFormData({...formData, spk_number:e.target.value})} required />
-            <input style={s.input} placeholder="Style" value={formData.style_name} onChange={e => setFormData({...formData, style_name:e.target.value})} />
-            <input style={s.input} placeholder="Size" value={formData.size} onChange={e => setFormData({...formData, size:e.target.value})} />
-            <input style={s.input} placeholder="Target" type="number" value={formData.target_qty} onChange={e => setFormData({...formData, target_qty:e.target.value})} />
-            <input style={s.input} placeholder="XFD (e.g. 25 Jan)" value={formData.xfd_date} onChange={e => setFormData({...formData, xfd_date:e.target.value})} />
-            <input style={s.input} placeholder="Qty" type="number" value={formData.qty} onChange={e => setFormData({...formData, qty:e.target.value})} required />
+            <input style={s.input} placeholder="SPK" value={formData.spk_number} onChange={e => setFormData({...formData, spk_number:e.target.value.toUpperCase()})} required />
+            <input style={s.input} placeholder="Target" type="number" value={formData.target_qty || ''} onChange={e => setFormData({...formData, target_qty: e.target.value})} />
+            <input style={s.input} placeholder="XFD" value={formData.xfd_date} onChange={e => setFormData({...formData, xfd_date: e.target.value})} />
+            <input style={s.input} placeholder="Qty" type="number" value={formData.qty || ''} onChange={e => setFormData({...formData, qty: e.target.value})} required />
             <select style={s.input} value={formData.rack} onChange={e => setFormData({...formData, rack:e.target.value})} required>
               <option value="">Pilih Rak</option>
               {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest:e.target.value})} required />
-            <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator:e.target.value})} required />
-            <button type="submit" style={{...s.btn, background:'#1a237e'}}>SIMPAN</button>
+            <input style={s.input} placeholder="Asal/Tujuan" value={formData.source_dest} onChange={e => setFormData({...formData, source_dest: e.target.value})} required />
+            <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({...formData, operator: e.target.value})} required />
+            <button type="submit" disabled={isSubmitting} style={{...s.btn, background:'#1a237e'}}>{isSubmitting ? "SIMPAN..." : "SIMPAN"}</button>
           </form>
         </div>
 
+        {/* Kolom List */}
         <div style={{ flex: 2, background: 'white', padding: 20, borderRadius: 12 }}>
-          <input style={{width:'100%', padding:10, marginBottom:15}} placeholder="Cari SPK/Rak..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
+          <input style={{width:'100%', padding:10, marginBottom:10}} placeholder="Cari..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             {DAFTAR_RAK.map(rack => {
               const items = inventory.filter(i => i.rack === rack && i.spk.includes(searchTerm));
               return (
-                <div key={rack} style={{ border: '1px solid #eee', padding: 10, borderRadius: 8 }}>
+                <div key={rack} style={{ border: '1px solid #eee', padding: 8, borderRadius: 8 }}>
                   <b>{rack}</b>
                   {items.map((it, idx) => (
-                    <div key={idx} style={{ fontSize: 11, background: '#f9f9f9', padding: 3, marginTop: 3 }}>
-                      {it.spk} ({it.stock}) <br/>
-                      <small>TO: {it.last_to || '-'}</small>
+                    <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: 11, background: '#f9f9f9', padding: 5, marginTop: 3, cursor: 'pointer' }}>
+                      {it.spk} ({it.stock})
                     </div>
                   ))}
                 </div>
@@ -296,7 +308,7 @@ function App() {
 
 const s = {
   input: { padding: '10px', borderRadius: '5px', border: '1px solid #ccc' },
-  btn: { padding: '10px 15px', border: 'none', borderRadius: '5px', color: 'white', fontWeight: 'bold' },
+  btn: { padding: '10px 15px', border: 'none', borderRadius: '5px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalContent: { background: 'white', padding: '30px', borderRadius: '15px', textAlign: 'center' }
 };
