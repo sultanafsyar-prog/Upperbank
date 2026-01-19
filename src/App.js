@@ -108,22 +108,6 @@ function App() {
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
 
-        const created = curr.created || '';
-
-        if (!acc[key].last_created || created > acc[key].last_created) {
-          acc[key].last_created = created;
-          acc[key].last_move = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : acc[key].last_move);
-        }
-
-        if (qtyIn > 0 && curr.source_from) acc[key].last_from = curr.source_from;
-
-        if (qtyOut > 0 && curr.destination) {
-          if (!acc[key].last_out_created || created > acc[key].last_out_created) {
-            acc[key].last_out_created = created;
-            acc[key].last_to = curr.destination;
-          }
-        }
-
         return acc;
       }, {});
 
@@ -228,27 +212,6 @@ function App() {
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     exportToXlsx(rows, 'Inventory_Summary', `Inventory_Summary_${stamp}.xlsx`);
-  };
-
-  const handleExportRawXlsx = () => {
-    const rows = rawRecords.map((r) => ({
-      CREATED: r.created,
-      WAKTU_INPUT: r.waktu_input,
-      OPERATOR: r.operator,
-      SPK: r.spk_number,
-      STYLE: r.style_name,
-      SIZE: r.size,
-      RAK: r.rack_location,
-      QTY_IN: Number(r.qty_in || 0),
-      QTY_OUT: Number(r.qty_out || 0),
-      SOURCE_FROM: r.source_from,
-      DESTINATION: r.destination,
-      TARGET_QTY: Number(r.target_qty || 0),
-      XFD: r.xfd_date
-    }));
-
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    exportToXlsx(rows, 'Raw_Transactions', `Raw_Transactions_${stamp}.xlsx`);
   };
 
   // ============================
