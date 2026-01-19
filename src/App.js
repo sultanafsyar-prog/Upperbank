@@ -4,7 +4,47 @@ import * as XLSX from 'xlsx';
 
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
-const DAFTAR_RAK = ["A-01", "A-02", "A-03", "A-04", "B-01", "B-02", "B-03", "B-04", "C-01", "C-02", "C-03", "C-04"];
+// Rack: D/E/F/H/I masing-masing 6
+const RACK_LETTERS = ['D', 'E', 'F', 'H', 'I'];
+const DAFTAR_RAK = RACK_LETTERS.flatMap((l) =>
+  Array.from({ length: 6 }, (_, i) => `${l}-${String(i + 1).padStart(2, '0')}`)
+);
+
+// Urutan kolom TV: I, H, F, E, D
+const TV_COLUMN_ORDER = ['I', 'H', 'F', 'E', 'D'];
+
+// =============== Sparkline Component (mirip saham) ===============
+function Sparkline({ data, width = 120, height = 26 }) {
+  if (!data || data.length < 2) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * width;
+      const y = height - ((v - min) / range) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  const trendUp = data[data.length - 1] >= data[0];
+  const stroke = trendUp ? '#2ecc71' : '#e74c3c';
+  const fill = trendUp ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)';
+
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polyline points={points} fill="none" stroke={stroke} strokeWidth="2" />
+      {/* area soft */}
+      <polygon
+        points={`${points} ${width},${height} 0,${height}`}
+        fill={fill}
+        stroke="none"
+      />
+    </svg>
+  );
+}
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
@@ -16,40 +56,59 @@ function App() {
 
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
-
-  // SEARCH & FILTER INVENTORY
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterRack, setFilterRack] = useState('ALL');
-  const [filterSize, setFilterSize] = useState('ALL');
-  const [filterTo, setFilterTo] = useState('ALL');
-
-  // EXPORT
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // HISTORY (RIWAYAT TRANSAKSI)
-  const [showHistory, setShowHistory] = useState(true);
-  const [trxSearch, setTrxSearch] = useState('');
-  const [trxDateFrom, setTrxDateFrom] = useState(''); // yyyy-mm-dd
-  const [trxDateTo, setTrxDateTo] = useState('');     // yyyy-mm-dd
-
   const [formData, setFormData] = useState({
-    spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0,
+    spk_number: '',
+    style_name: '',
+    size: '',
+    qty: 0,
+    target_qty: 0,
     xfd_date: '',
-    type: 'IN', source_dest: '', rack: '', operator: ''
+    type: 'IN',
+    source_dest: '',
+    rack: '',
+    operator: ''
   });
 
+  // ============================
+  // LOGIN / LOGOUT
+  // ============================
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await pb.collection('users').authWithPassword(loginEmail, loginPassword);
+      setIsLoggedIn(true);
+      fetchData();
+    } catch (err) {
+      pb.authStore.clear();
+      setIsLoggedIn(false);
+      alert('⚠️ LOGIN GAGAL: Periksa kembali email dan password!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    pb.authStore.clear();
+    setIsLoggedIn(false);
+  };
+
+  // ============================
+  // FETCH DATA
+  // ============================
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
-
     try {
-      // RAW: untuk riwayat (100 terbaru)
-      const res = await pb.collection('upper_stock').getList(1, 100, {
+      // ambil lebih banyak utk sparkline lebih smooth (masih aman)
+      const res = await pb.collection('upper_stock').getList(1, 300, {
         sort: '-created',
         requestKey: null
       });
       setRawRecords(res.items);
 
-      // FULL: untuk summary inventory
       const allRecords = await pb.collection('upper_stock').getFullList({
         sort: 'created',
         requestKey: null
@@ -67,7 +126,6 @@ function App() {
             stock: 0,
             target: 0,
             xfd: '',
-            // FIX: pisahkan tujuan OUT dan asal IN
             last_from: '',
             last_to: '',
             last_move: '',
@@ -79,28 +137,20 @@ function App() {
         const qtyIn = Number(curr.qty_in || 0);
         const qtyOut = Number(curr.qty_out || 0);
 
-        // stock akumulasi
         acc[key].stock += (qtyIn - qtyOut);
 
-        // target & xfd update
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
 
-        // urutan transaksi berdasarkan created
         const created = curr.created || '';
 
-        // simpan transaksi terakhir
         if (!acc[key].last_created || created > acc[key].last_created) {
           acc[key].last_created = created;
           acc[key].last_move = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : acc[key].last_move);
         }
 
-        // simpan asal terakhir jika IN
-        if (qtyIn > 0 && curr.source_from) {
-          acc[key].last_from = curr.source_from;
-        }
+        if (qtyIn > 0 && curr.source_from) acc[key].last_from = curr.source_from;
 
-        // simpan tujuan terakhir jika OUT
         if (qtyOut > 0 && curr.destination) {
           if (!acc[key].last_out_created || created > acc[key].last_out_created) {
             acc[key].last_out_created = created;
@@ -111,48 +161,32 @@ function App() {
         return acc;
       }, {});
 
-      setInventory(Object.values(summary).filter(i => i.stock > 0));
+      setInventory(Object.values(summary).filter((i) => i.stock > 0));
     } catch (error) {
-      console.error("Gagal Sinkronisasi:", error);
+      console.error('Gagal Sinkronisasi:', error);
     }
   }, [isLoggedIn]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await pb.collection('users').authWithPassword(loginEmail, loginPassword);
-      setIsLoggedIn(true);
-      fetchData();
-    } catch (err) {
-      pb.authStore.clear();
-      setIsLoggedIn(false);
-      alert("⚠️ LOGIN GAGAL: Periksa kembali email dan password!");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    pb.authStore.clear();
-    setIsLoggedIn(false);
-  };
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchData();
       const unsubscribe = pb.collection('upper_stock').subscribe('*', () => fetchData());
-      return () => { unsubscribe.then(unsub => unsub()); };
+      return () => unsubscribe.then((unsub) => unsub());
     }
   }, [fetchData, isLoggedIn]);
 
+  // ============================
+  // SUBMIT
+  // ============================
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
 
     const sekarang = new Date();
-    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+    const waktuLokal =
+      `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')}` +
+      ` ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     try {
       await pb.collection('upper_stock').create({
@@ -170,10 +204,19 @@ function App() {
         waktu_input: waktuLokal
       });
 
-      alert("✅ Data Berhasil Disimpan!");
-      setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0, xfd_date: '', source_dest: '' });
+      alert('✅ Data Berhasil Disimpan!');
+      setFormData({
+        ...formData,
+        spk_number: '',
+        style_name: '',
+        size: '',
+        qty: 0,
+        target_qty: 0,
+        xfd_date: '',
+        source_dest: ''
+      });
     } catch (err) {
-      alert("❌ Gagal Simpan!");
+      alert('❌ Gagal Simpan!');
     } finally {
       setIsSubmitting(false);
     }
@@ -193,11 +236,11 @@ function App() {
   };
 
   // ============================
-  // XLSX EXPORT
+  // EXPORT XLSX
   // ============================
   const exportToXlsx = (rows, sheetName, fileName) => {
     if (!rows || rows.length === 0) {
-      alert("⚠️ Tidak ada data untuk diexport.");
+      alert('⚠️ Tidak ada data untuk diexport.');
       return;
     }
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -221,7 +264,7 @@ function App() {
     }));
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    exportToXlsx(rows, "Inventory_Summary", `Inventory_Summary_${stamp}.xlsx`);
+    exportToXlsx(rows, 'Inventory_Summary', `Inventory_Summary_${stamp}.xlsx`);
   };
 
   const handleExportRawXlsx = () => {
@@ -242,175 +285,256 @@ function App() {
     }));
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    exportToXlsx(rows, "Raw_Transactions", `Raw_Transactions_${stamp}.xlsx`);
+    exportToXlsx(rows, 'Raw_Transactions', `Raw_Transactions_${stamp}.xlsx`);
   };
 
   // ============================
-  // HELPERS FILTER
+  // Helper: total stock per rack (current)
   // ============================
-  const normalize = (v) => String(v || '').toUpperCase().trim();
-
-  const sizeOptions = Array.from(new Set(inventory.map(i => i.size).filter(Boolean))).sort();
-  const toOptions = Array.from(new Set(inventory.map(i => i.last_to).filter(Boolean))).sort();
-
-  const filteredRacks = filterRack === 'ALL' ? DAFTAR_RAK : DAFTAR_RAK.filter(r => r === filterRack);
-
-  const inventoryItemMatch = (it) => {
-    const q = normalize(searchTerm);
-    const okSearch =
-      !q ||
-      normalize(it.spk).includes(q) ||
-      normalize(it.xfd).includes(q) ||
-      normalize(it.rack).includes(q) ||
-      normalize(it.size).includes(q) ||
-      normalize(it.last_to).includes(q);
-
-    const okSize = filterSize === 'ALL' ? true : normalize(it.size) === normalize(filterSize);
-    const okTo = filterTo === 'ALL' ? true : normalize(it.last_to) === normalize(filterTo);
-
-    return okSearch && okSize && okTo;
+  const getCurrentRackTotal = (rack) => {
+    return inventory
+      .filter((i) => i.rack === rack)
+      .reduce((sum, it) => sum + Number(it.stock || 0), 0);
   };
 
-  const inDateRange = (isoCreated, fromYmd, toYmd) => {
-    if (!fromYmd && !toYmd) return true;
-    const t = new Date(isoCreated).getTime();
-    if (fromYmd) {
-      const from = new Date(fromYmd + 'T00:00:00').getTime();
-      if (t < from) return false;
+  // Helper: sparkline data per rack (pakai transaksi terbaru)
+  const getRackSparkline = (rack, points = 18) => {
+    const current = getCurrentRackTotal(rack);
+    const recs = rawRecords
+      .filter((r) => r.rack_location === rack)
+      .slice(0, points); // ini DESC (paling baru dulu)
+
+    if (!recs.length) return [current, current];
+
+    let t = current;
+    const seriesBack = [t];
+    for (const r of recs) {
+      const delta = Number(r.qty_in || 0) - Number(r.qty_out || 0);
+      t = t - delta; // mundur ke kondisi sebelumnya
+      seriesBack.push(t);
     }
-    if (toYmd) {
-      const to = new Date(toYmd + 'T23:59:59').getTime();
-      if (t > to) return false;
-    }
-    return true;
+    return seriesBack.reverse(); // jadi kronologis
   };
 
-  const filteredHistory = rawRecords.filter(r => {
-    const q = normalize(trxSearch);
-    const type = Number(r.qty_out || 0) > 0 ? 'OUT' : (Number(r.qty_in || 0) > 0 ? 'IN' : '');
+  // Helper: transaksi terakhir rack (untuk Δ)
+  const getLastRackMove = (rack) => {
+    const last = rawRecords.find((r) => r.rack_location === rack);
+    if (!last) return null;
+    const qtyIn = Number(last.qty_in || 0);
+    const qtyOut = Number(last.qty_out || 0);
+    const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
+    const delta = qtyIn - qtyOut; // + berarti nambah stock, - berarti keluar
+    return {
+      type,
+      delta,
+      to: last.destination || '',
+      from: last.source_from || '',
+      time: last.created ? last.created.slice(11, 16) : ''
+    };
+  };
 
-    const okSearch =
-      !q ||
-      normalize(r.spk_number).includes(q) ||
-      normalize(r.style_name).includes(q) ||
-      normalize(r.size).includes(q) ||
-      normalize(r.rack_location).includes(q) ||
-      normalize(r.source_from).includes(q) ||
-      normalize(r.destination).includes(q) ||
-      normalize(r.operator).includes(q) ||
-      normalize(type).includes(q);
-
-    const okDate = inDateRange(r.created, trxDateFrom, trxDateTo);
-    return okSearch && okDate;
+  // ============================
+  // TV Ticker bawah: riwayat transaksi
+  // ============================
+  const tvTickerItems = (rawRecords || []).slice(0, 25).map((r) => {
+    const qtyIn = Number(r.qty_in || 0);
+    const qtyOut = Number(r.qty_out || 0);
+    const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
+    const qty = qtyOut > 0 ? qtyOut : qtyIn;
+    const time = r.created ? r.created.slice(11, 16) : '';
+    const arrow = type === 'OUT' ? `→ ${r.destination || '-'}` : `← ${r.source_from || '-'}`;
+    return `[${time}] ${type} ${qty} | ${r.spk_number || '-'} | ${r.rack_location || '-'} ${arrow} | OP ${r.operator || '-'}`;
   });
+
+  const tvTickerText = tvTickerItems.length ? tvTickerItems.join('   •   ') : 'Belum ada transaksi';
+  const tvTickerDuration = Math.max(25, Math.min(90, Math.round(tvTickerText.length / 8)));
 
   // ============================
   // LOGIN UI
   // ============================
-  if (!isLoggedIn) return (
-    <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
-      <div style={s.modalContent}>
-        <h2>LOGIN SYSTEM</h2>
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
-          <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
-          <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>
-            {loading ? "PROSES..." : "MASUK"}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-
-  // ============================
-  // TV MODE
-  // ============================
-  if (viewMode === 'TV') return (
-    <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', color: 'white', fontFamily: 'sans-serif', overflow: 'hidden' }}>
-      <style>{`
-        @keyframes pulse-glow { 0% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } 50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.5); } 100% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } }
-        @keyframes blink-red { 0% { opacity: 1; color: #ff3d00; } 50% { opacity: 0.3; color: #fff; } 100% { opacity: 1; color: #ff3d00; } }
-        .glass-card { background: rgba(22, 27, 34, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 12px; }
-        .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
-        .blink-urgent { animation: blink-red 1s infinite; font-weight: 900 !important; }
-        .ticker-container::-webkit-scrollbar { width: 6px; }
-        .ticker-container::-webkit-scrollbar-thumb { background: #3498db; border-radius: 10px; }
-        .progress-bg { background: #111; height: 12px; border-radius: 6px; margin: 8px 0; overflow: hidden; border: 1px solid #333; }
-        .progress-fill { height: 100%; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-      `}</style>
-
-      <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 30px', marginBottom: '15px', borderBottom: '4px solid #3498db' }}>
-        <div>
-          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}>
-            <img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />
-            PRODUCTION STOCK MONITOR
-          </h1>
-          <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
+  if (!isLoggedIn)
+    return (
+      <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
+        <div style={s.modalContent}>
+          <h2>LOGIN SYSTEM</h2>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input style={s.input} type="email" placeholder="Email" onChange={(e) => setLoginEmail(e.target.value)} required />
+            <input style={s.input} type="password" placeholder="Password" onChange={(e) => setLoginPassword(e.target.value)} required />
+            <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>
+              {loading ? 'PROSES...' : 'MASUK'}
+            </button>
+          </form>
         </div>
-        <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
       </div>
+    );
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', height: '80vh' }}>
-        {DAFTAR_RAK.map(rack => {
-          const items = inventory.filter(i => i.rack === rack);
-          const total = items.reduce((a, b) => a + b.stock, 0);
+  // ============================
+  // TV MODE UI (style saham)
+  // ============================
+  if (viewMode === 'TV') {
+    const rackGroups = TV_COLUMN_ORDER.map((letter) =>
+      DAFTAR_RAK.filter((rk) => rk.startsWith(`${letter}-`))
+    );
 
-          return (
-            <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '12px', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
-                <span style={{ fontSize: '24px', color: '#3498db', fontWeight: '900' }}>{rack}</span>
-                <span style={{ fontSize: '18px', background: '#3498db', color: '#000', padding: '2px 10px', borderRadius: '20px', fontWeight: 'bold' }}>{total}</span>
-              </div>
+    return (
+      <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', paddingBottom: '90px', color: 'white', fontFamily: 'sans-serif', overflow: 'hidden' }}>
+        <style>{`
+          @keyframes pulse-glow { 0% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } 50% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.5); } 100% { box-shadow: 0 0 5px rgba(52, 152, 219, 0.2); } }
+          @keyframes blink-red { 0% { opacity: 1; color: #ff3d00; } 50% { opacity: 0.3; color: #fff; } 100% { opacity: 1; color: #ff3d00; } }
+          .glass-card { background: rgba(22, 27, 34, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(48, 54, 61, 0.8); border-radius: 12px; }
+          .active-rack { animation: pulse-glow 2s infinite; border: 1px solid #3498db !important; }
+          .blink-urgent { animation: blink-red 1s infinite; font-weight: 900 !important; }
+          .ticker-container::-webkit-scrollbar { width: 6px; }
+          .ticker-container::-webkit-scrollbar-thumb { background: #3498db; border-radius: 10px; }
+          .progress-bg { background: #111; height: 10px; border-radius: 6px; margin: 6px 0; overflow: hidden; border: 1px solid #333; }
+          .progress-fill { height: 100%; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
 
-              <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                {items.map((it, idx) => {
-                  const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
-                  const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
+          /* TV ticker bawah (market tape) */
+          .tv-ticker { position: fixed; left: 15px; right: 15px; bottom: 15px; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+          .tv-ticker-label { font-weight: 900; color: #3498db; white-space: nowrap; letter-spacing: 1px; }
+          .tv-ticker-track { flex: 1; overflow: hidden; }
+          .tv-ticker-content { display: flex; width: max-content; animation-name: tvTickerScroll; animation-timing-function: linear; animation-iteration-count: infinite; }
+          .tv-ticker-text { white-space: nowrap; padding-right: 60px; color: #ddd; font-weight: 800; font-size: 13px; }
+          @keyframes tvTickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        `}</style>
 
-                  return (
-                    <div key={idx} style={{ padding: '12px 0', borderBottom: '1px solid #222' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <strong style={{ color: '#fff', fontSize: '16px' }}>{it.spk}</strong>
-                          <span style={{ color: '#e67e22', fontSize: '12px', fontWeight: 'bold' }}>📅 XFD: {it.xfd || '-'}</span>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '18px', fontWeight: 'bold', color: barColor }}>
-                            {it.stock}<span style={{ fontSize: '12px', color: '#666' }}>/{it.target}</span>
+        <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 30px', marginBottom: '15px', borderBottom: '4px solid #3498db' }}>
+          <div>
+            <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}>
+              <img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />
+              PRODUCTION STOCK MONITOR
+            </h1>
+            <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
+          </div>
+          <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
+        </div>
+
+        {/* Kolom I / H / F / E / D, tiap kolom turun 6 rack */}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${rackGroups.length}, 1fr)`, gap: '12px', height: '80vh', overflow: 'hidden' }}>
+          {rackGroups.map((group, colIdx) => {
+            const letter = TV_COLUMN_ORDER[colIdx];
+            return (
+              <div key={letter} style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
+                <div className="glass-card" style={{ padding: '10px 12px', borderLeft: '5px solid #3498db' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#3498db', letterSpacing: '2px' }}>AREA {letter}</div>
+                  <div style={{ fontSize: '12px', color: '#aaa', fontWeight: 800 }}>Rack {letter}-01 s/d {letter}-06</div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflow: 'hidden' }}>
+                  {group.map((rack) => {
+                    const items = inventory.filter((i) => i.rack === rack);
+
+                    const totalStock = items.reduce((a, b) => a + Number(b.stock || 0), 0);
+
+                    const totalShortfall = items.reduce((sum, it) => {
+                      const t = Number(it.target || 0);
+                      const s = Number(it.stock || 0);
+                      if (t > 0 && s < t) return sum + (t - s);
+                      return sum;
+                    }, 0);
+
+                    const notMetCount = items.filter((it) => Number(it.target || 0) > 0 && Number(it.stock || 0) < Number(it.target || 0)).length;
+
+                    const spark = getRackSparkline(rack, 18);
+                    const lastMove = getLastRackMove(rack);
+                    const deltaText = lastMove ? `${lastMove.delta >= 0 ? '+' : ''}${lastMove.delta}` : '0';
+                    const deltaColor = lastMove ? (lastMove.delta >= 0 ? '#2ecc71' : '#e74c3c') : '#888';
+
+                    return (
+                      <div
+                        key={rack}
+                        className={`glass-card ${totalStock > 0 ? 'active-rack' : ''}`}
+                        style={{ padding: '10px', display: 'flex', flexDirection: 'column', height: 'calc((80vh - 80px) / 6)' }}
+                      >
+                        {/* Header rack: total + shortfall + sparkline */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', borderBottom: '1px solid #333', paddingBottom: '6px', marginBottom: '6px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: '90px' }}>
+                            <span style={{ fontSize: '18px', color: '#3498db', fontWeight: 900 }}>{rack}</span>
+                            <span style={{ fontSize: '11px', color: '#aaa', fontWeight: 800 }}>SPK aktif: {items.length}</span>
+                            <span style={{ fontSize: '11px', fontWeight: 900, color: totalShortfall > 0 ? '#f1c40f' : '#2ecc71' }}>
+                              Short: {totalShortfall} {notMetCount > 0 ? `(SPK<target: ${notMetCount})` : '(OK)'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                            <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff' }}>
+                              Total: <span style={{ color: '#3498db' }}>{totalStock}</span>
+                            </div>
+
+                            {/* Δ perubahan terakhir (kayak saham) */}
+                            <div style={{ fontSize: '12px', fontWeight: 900, color: deltaColor }}>
+                              Δ {deltaText} {lastMove ? `(${lastMove.type})` : ''}
+                            </div>
+
+                            <Sparkline data={spark} width={130} height={24} />
                           </div>
                         </div>
-                      </div>
 
-                      <div className="progress-bg">
-                        <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
-                      </div>
+                        {/* List SPK di rack */}
+                        <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
+                          {items.map((it, idx) => {
+                            const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
+                            const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold' }}>
-                        <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
-                        <span className={percent >= 100 ? 'blink-urgent' : ''} style={{
-                          color: '#3498db',
-                          background: 'rgba(52, 152, 219, 0.1)',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(52, 152, 219, 0.3)'
-                        }}>
-                          TO: {it.last_to || 'SUPERMARKET'}
-                        </span>
+                            return (
+                              <div key={idx} style={{ padding: '6px 0', borderBottom: '1px solid #222' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <strong style={{ color: '#fff', fontSize: '12px' }}>{it.spk}</strong>
+                                    <span style={{ color: '#e67e22', fontSize: '10px', fontWeight: 'bold' }}>XFD: {it.xfd || '-'}</span>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: barColor }}>
+                                      {it.stock}<span style={{ fontSize: '10px', color: '#666' }}>/{it.target}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="progress-bg">
+                                  <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 'bold' }}>
+                                  <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
+                                  <span className={percent >= 100 ? 'blink-urgent' : ''} style={{
+                                    color: '#3498db',
+                                    background: 'rgba(52, 152, 219, 0.1)',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(52, 152, 219, 0.3)'
+                                  }}>
+                                    TO: {it.last_to || 'SUPERMARKET'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
+            );
+          })}
+        </div>
 
+        {/* Market tape: riwayat transaksi bawah */}
+        <div className="glass-card tv-ticker">
+          <div className="tv-ticker-label">LAST MOVEMENTS</div>
+          <div className="tv-ticker-track">
+            <div className="tv-ticker-content" style={{ animationDuration: `${tvTickerDuration}s` }}>
+              <div className="tv-ticker-text">{tvTickerText}</div>
+              <div className="tv-ticker-text">{tvTickerText}</div>
             </div>
-          );
-        })}
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   // ============================
-  // ADMIN MODE
+  // ADMIN MODE UI
   // ============================
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
@@ -421,7 +545,11 @@ function App() {
         </h2>
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD TV</button>
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085', marginRight: '10px' }}>EXPORT XLSX</button>
+
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085', marginRight: '10px' }}>
+            EXPORT XLSX
+          </button>
+
           <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>LOGOUT</button>
         </div>
       </nav>
@@ -448,203 +576,77 @@ function App() {
         </div>
       )}
 
-      {/* FILTER BAR (Inventory) */}
-      <div style={{ background: 'white', padding: '12px', borderRadius: '12px', marginBottom: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          style={{ ...s.input, flex: 1, minWidth: 220 }}
-          placeholder="Cari SPK / XFD / RAK / SIZE / TO..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value.toUpperCase())}
-        />
-
-        <select style={{ ...s.input, minWidth: 140 }} value={filterRack} onChange={e => setFilterRack(e.target.value)}>
-          <option value="ALL">Semua Rak</option>
-          {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-
-        <select style={{ ...s.input, minWidth: 140 }} value={filterSize} onChange={e => setFilterSize(e.target.value)}>
-          <option value="ALL">Semua Size</option>
-          {sizeOptions.map(sz => <option key={sz} value={sz}>{sz}</option>)}
-        </select>
-
-        <select style={{ ...s.input, minWidth: 180 }} value={filterTo} onChange={e => setFilterTo(e.target.value)}>
-          <option value="ALL">Semua Tujuan (TO)</option>
-          {toOptions.map(to => <option key={to} value={to}>{to}</option>)}
-        </select>
-
-        <button
-          onClick={() => { setSearchTerm(''); setFilterRack('ALL'); setFilterSize('ALL'); setFilterTo('ALL'); }}
-          style={{ ...s.btn, background: '#7f8c8d' }}
-        >
-          Reset Filter
-        </button>
-      </div>
-
       <div style={{ display: 'flex', gap: '20px' }}>
-        {/* INPUT TRANSAKSI */}
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
             <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>Input Transaksi</h3>
-
             <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
               <button type="button" onClick={() => setFormData({ ...formData, type: 'IN' })} style={{ flex: 1, padding: '12px', background: formData.type === 'IN' ? '#2ecc71' : '#eee', color: formData.type === 'IN' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>IN (Masuk)</button>
               <button type="button" onClick={() => setFormData({ ...formData, type: 'OUT' })} style={{ flex: 1, padding: '12px', background: formData.type === 'OUT' ? '#e74c3c' : '#eee', color: formData.type === 'OUT' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>OUT (Keluar)</button>
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={e => setFormData({ ...formData, spk_number: e.target.value.toUpperCase() })} required />
-              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={e => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} required />
+              <input style={s.input} placeholder="Nomor SPK" value={formData.spk_number} onChange={(e) => setFormData({ ...formData, spk_number: e.target.value.toUpperCase() })} required />
+              <input style={s.input} placeholder="Style/Artikel" value={formData.style_name} onChange={(e) => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} required />
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input style={{ ...s.input, flex: 1 }} placeholder="Size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} required />
-                <input style={{ ...s.input, flex: 1 }} placeholder="Target Qty" type="number" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
+                <input style={{ ...s.input, flex: 1 }} placeholder="Size" value={formData.size} onChange={(e) => setFormData({ ...formData, size: e.target.value })} required />
+                <input style={{ ...s.input, flex: 1 }} placeholder="Target Qty" type="number" value={formData.target_qty || ''} onChange={(e) => setFormData({ ...formData, target_qty: e.target.value })} />
               </div>
 
-              <input style={{ ...s.input, borderColor: '#e67e22' }} placeholder="XFD" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
+              <input style={{ ...s.input, borderColor: '#e67e22' }} placeholder="XFD" value={formData.xfd_date} onChange={(e) => setFormData({ ...formData, xfd_date: e.target.value })} />
 
-              <input type="number" style={{ ...s.input, border: '2px solid #1a237e' }} placeholder="Jumlah Pasang" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              <input type="number" style={{ ...s.input, border: '2px solid #1a237e' }} placeholder="Jumlah Pasang" value={formData.qty || ''} onChange={(e) => setFormData({ ...formData, qty: e.target.value })} required />
 
-              <select style={s.input} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
+              <select style={s.input} value={formData.rack} onChange={(e) => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Pilih Rak --</option>
-                {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
+                {DAFTAR_RAK.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
 
-              <input style={s.input} placeholder={formData.type === 'IN' ? "Asal" : "Tujuan Area"} value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
-              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
+              <input style={s.input} placeholder={formData.type === 'IN' ? 'Asal' : 'Tujuan Area'} value={formData.source_dest} onChange={(e) => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Operator" value={formData.operator} onChange={(e) => setFormData({ ...formData, operator: e.target.value })} required />
 
               <button type="submit" disabled={isSubmitting} style={{ ...s.btn, background: isSubmitting ? '#95a5a6' : '#1a237e', padding: '18px', fontSize: '16px' }}>
-                {isSubmitting ? "MENYIMPAN..." : "SIMPAN TRANSAKSI"}
+                {isSubmitting ? 'MENYIMPAN...' : 'SIMPAN TRANSAKSI'}
               </button>
             </form>
           </div>
         </div>
 
-        {/* INVENTORY + HISTORY */}
-        <div style={{ flex: '2' }}>
-          {/* INVENTORY GRID */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', marginBottom: '15px' }}>
-            <h3 style={{ marginTop: 0 }}>Inventory Per Rak</h3>
+        <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '12px' }}>
+          <input
+            style={{ width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box' }}
+            placeholder="Cari SPK / XFD"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+            {DAFTAR_RAK.map((rack) => {
+              const matchRack = rack.includes(searchTerm);
+              const items = inventory.filter((i) =>
+                i.rack === rack &&
+                (matchRack || i.spk.includes(searchTerm) || (i.xfd || '').includes(searchTerm))
+              );
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {filteredRacks.map(rack => {
-                const items = inventory
-                  .filter(i => i.rack === rack)
-                  .filter(inventoryItemMatch);
+              const total = items.reduce((a, b) => a + b.stock, 0);
 
-                const total = items.reduce((a, b) => a + b.stock, 0);
-
-                return (
-                  <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
-                    <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
-
-                    {items.map((it, idx) => (
-                      <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <strong>{it.spk}</strong>
-                          <span style={{ color: '#e67e22' }}>{it.xfd}</span>
-                        </div>
-                        <div>Stok: {it.stock}/{it.target} | Size: {it.size}</div>
-                        <div style={{ color: '#3498db' }}>To: {it.last_to || '-'}</div>
+              return (
+                <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
+                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
+                  {items.map((it, idx) => (
+                    <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <strong>{it.spk}</strong>
+                        <span style={{ color: '#e67e22' }}>{it.xfd}</span>
                       </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* HISTORY PANEL */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 0 }}>Riwayat Transaksi Terakhir (100 data)</h3>
-              <button onClick={() => setShowHistory(v => !v)} style={{ ...s.btn, background: showHistory ? '#e67e22' : '#2ecc71' }}>
-                {showHistory ? "Sembunyikan" : "Tampilkan"}
-              </button>
-            </div>
-
-            {showHistory && (
-              <>
-                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-                  <input
-                    style={{ ...s.input, flex: 1, minWidth: 220 }}
-                    placeholder="Cari (SPK/Style/Size/Rak/From/To/Operator/IN/OUT)"
-                    value={trxSearch}
-                    onChange={e => setTrxSearch(e.target.value.toUpperCase())}
-                  />
-
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#666' }}>Dari</span>
-                    <input style={s.input} type="date" value={trxDateFrom} onChange={e => setTrxDateFrom(e.target.value)} />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#666' }}>Sampai</span>
-                    <input style={s.input} type="date" value={trxDateTo} onChange={e => setTrxDateTo(e.target.value)} />
-                  </div>
-
-                  <button
-                    onClick={() => { setTrxSearch(''); setTrxDateFrom(''); setTrxDateTo(''); }}
-                    style={{ ...s.btn, background: '#7f8c8d' }}
-                  >
-                    Reset
-                  </button>
+                      <div>Stok: {it.stock}/{it.target} | Size: {it.size}</div>
+                      <div style={{ color: '#3498db' }}>To: {it.last_to || '-'}</div>
+                    </div>
+                  ))}
                 </div>
-
-                <div style={{ marginTop: 12, overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: '#f2f4f7' }}>
-                        <th style={s.th}>Created</th>
-                        <th style={s.th}>Waktu Input</th>
-                        <th style={s.th}>Type</th>
-                        <th style={s.th}>SPK</th>
-                        <th style={s.th}>Style</th>
-                        <th style={s.th}>Size</th>
-                        <th style={s.th}>Rak</th>
-                        <th style={s.th}>IN</th>
-                        <th style={s.th}>OUT</th>
-                        <th style={s.th}>From</th>
-                        <th style={s.th}>To</th>
-                        <th style={s.th}>Operator</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredHistory.map((r) => {
-                        const qtyIn = Number(r.qty_in || 0);
-                        const qtyOut = Number(r.qty_out || 0);
-                        const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
-
-                        return (
-                          <tr key={r.id} style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={s.td}>{r.created?.slice(0, 19)?.replace('T', ' ')}</td>
-                            <td style={s.td}>{r.waktu_input || '-'}</td>
-                            <td style={{ ...s.td, fontWeight: 'bold', color: type === 'OUT' ? '#e74c3c' : '#2ecc71' }}>{type}</td>
-                            <td style={s.td}>{r.spk_number}</td>
-                            <td style={s.td}>{r.style_name}</td>
-                            <td style={s.td}>{r.size}</td>
-                            <td style={s.td}>{r.rack_location}</td>
-                            <td style={s.td}>{qtyIn}</td>
-                            <td style={s.td}>{qtyOut}</td>
-                            <td style={s.td}>{r.source_from || '-'}</td>
-                            <td style={s.td}>{r.destination || '-'}</td>
-                            <td style={s.td}>{r.operator || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                      {filteredHistory.length === 0 && (
-                        <tr>
-                          <td colSpan={12} style={{ ...s.td, textAlign: 'center', color: '#888', padding: 16 }}>
-                            Tidak ada data yang cocok dengan filter.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+              );
+            })}
           </div>
-
         </div>
       </div>
     </div>
@@ -655,9 +657,7 @@ const s = {
   input: { padding: '12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '14px', outline: 'none' },
   btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999, background: 'rgba(0,0,0,0.35)' },
-  modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center', minWidth: '350px' },
-  th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #ddd', whiteSpace: 'nowrap' },
-  td: { padding: '8px', whiteSpace: 'nowrap' }
+  modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center', minWidth: '350px' }
 };
 
 export default App;
