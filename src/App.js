@@ -16,8 +16,21 @@ function App() {
 
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
+
+  // SEARCH & FILTER INVENTORY
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterRack, setFilterRack] = useState('ALL');
+  const [filterSize, setFilterSize] = useState('ALL');
+  const [filterTo, setFilterTo] = useState('ALL');
+
+  // EXPORT
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // HISTORY (RIWAYAT TRANSAKSI)
+  const [showHistory, setShowHistory] = useState(true);
+  const [trxSearch, setTrxSearch] = useState('');
+  const [trxDateFrom, setTrxDateFrom] = useState(''); // yyyy-mm-dd
+  const [trxDateTo, setTrxDateTo] = useState('');     // yyyy-mm-dd
 
   const [formData, setFormData] = useState({
     spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0,
@@ -27,13 +40,16 @@ function App() {
 
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
+
     try {
+      // RAW: untuk riwayat (100 terbaru)
       const res = await pb.collection('upper_stock').getList(1, 100, {
         sort: '-created',
         requestKey: null
       });
       setRawRecords(res.items);
 
+      // FULL: untuk summary inventory
       const allRecords = await pb.collection('upper_stock').getFullList({
         sort: 'created',
         requestKey: null
@@ -51,6 +67,7 @@ function App() {
             stock: 0,
             target: 0,
             xfd: '',
+            // FIX: pisahkan tujuan OUT dan asal IN
             last_from: '',
             last_to: '',
             last_move: '',
@@ -61,22 +78,29 @@ function App() {
 
         const qtyIn = Number(curr.qty_in || 0);
         const qtyOut = Number(curr.qty_out || 0);
+
+        // stock akumulasi
         acc[key].stock += (qtyIn - qtyOut);
 
+        // target & xfd update
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
 
+        // urutan transaksi berdasarkan created
         const created = curr.created || '';
 
+        // simpan transaksi terakhir
         if (!acc[key].last_created || created > acc[key].last_created) {
           acc[key].last_created = created;
           acc[key].last_move = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : acc[key].last_move);
         }
 
+        // simpan asal terakhir jika IN
         if (qtyIn > 0 && curr.source_from) {
           acc[key].last_from = curr.source_from;
         }
 
+        // simpan tujuan terakhir jika OUT
         if (qtyOut > 0 && curr.destination) {
           if (!acc[key].last_out_created || created > acc[key].last_out_created) {
             acc[key].last_out_created = created;
@@ -115,13 +139,11 @@ function App() {
   };
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-    fetchData();
-
-    const unsubPromise = pb.collection('upper_stock').subscribe('*', () => fetchData());
-    return () => {
-      unsubPromise.then(unsub => unsub());
-    };
+    if (isLoggedIn) {
+      fetchData();
+      const unsubscribe = pb.collection('upper_stock').subscribe('*', () => fetchData());
+      return () => { unsubscribe.then(unsub => unsub()); };
+    }
   }, [fetchData, isLoggedIn]);
 
   const handleSubmit = async (e) => {
@@ -130,7 +152,7 @@ function App() {
     setIsSubmitting(true);
 
     const sekarang = new Date();
-    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-') } ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     try {
       await pb.collection('upper_stock').create({
@@ -224,6 +246,65 @@ function App() {
   };
 
   // ============================
+  // HELPERS FILTER
+  // ============================
+  const normalize = (v) => String(v || '').toUpperCase().trim();
+
+  const sizeOptions = Array.from(new Set(inventory.map(i => i.size).filter(Boolean))).sort();
+  const toOptions = Array.from(new Set(inventory.map(i => i.last_to).filter(Boolean))).sort();
+
+  const filteredRacks = filterRack === 'ALL' ? DAFTAR_RAK : DAFTAR_RAK.filter(r => r === filterRack);
+
+  const inventoryItemMatch = (it) => {
+    const q = normalize(searchTerm);
+    const okSearch =
+      !q ||
+      normalize(it.spk).includes(q) ||
+      normalize(it.xfd).includes(q) ||
+      normalize(it.rack).includes(q) ||
+      normalize(it.size).includes(q) ||
+      normalize(it.last_to).includes(q);
+
+    const okSize = filterSize === 'ALL' ? true : normalize(it.size) === normalize(filterSize);
+    const okTo = filterTo === 'ALL' ? true : normalize(it.last_to) === normalize(filterTo);
+
+    return okSearch && okSize && okTo;
+  };
+
+  const inDateRange = (isoCreated, fromYmd, toYmd) => {
+    if (!fromYmd && !toYmd) return true;
+    const t = new Date(isoCreated).getTime();
+    if (fromYmd) {
+      const from = new Date(fromYmd + 'T00:00:00').getTime();
+      if (t < from) return false;
+    }
+    if (toYmd) {
+      const to = new Date(toYmd + 'T23:59:59').getTime();
+      if (t > to) return false;
+    }
+    return true;
+  };
+
+  const filteredHistory = rawRecords.filter(r => {
+    const q = normalize(trxSearch);
+    const type = Number(r.qty_out || 0) > 0 ? 'OUT' : (Number(r.qty_in || 0) > 0 ? 'IN' : '');
+
+    const okSearch =
+      !q ||
+      normalize(r.spk_number).includes(q) ||
+      normalize(r.style_name).includes(q) ||
+      normalize(r.size).includes(q) ||
+      normalize(r.rack_location).includes(q) ||
+      normalize(r.source_from).includes(q) ||
+      normalize(r.destination).includes(q) ||
+      normalize(r.operator).includes(q) ||
+      normalize(type).includes(q);
+
+    const okDate = inDateRange(r.created, trxDateFrom, trxDateTo);
+    return okSearch && okDate;
+  });
+
+  // ============================
   // LOGIN UI
   // ============================
   if (!isLoggedIn) return (
@@ -264,9 +345,7 @@ function App() {
             <img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />
             PRODUCTION STOCK MONITOR
           </h1>
-          <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>
-            SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}
-          </p>
+          <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
         </div>
         <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
       </div>
@@ -322,6 +401,7 @@ function App() {
                   );
                 })}
               </div>
+
             </div>
           );
         })}
@@ -339,7 +419,6 @@ function App() {
           <img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />
           SUPERMARKET STOCK ADMIN
         </h2>
-
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD TV</button>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085', marginRight: '10px' }}>EXPORT XLSX</button>
@@ -347,6 +426,7 @@ function App() {
         </div>
       </nav>
 
+      {/* MODAL EXPORT XLSX */}
       {showExportModal && (
         <div style={s.modalOverlay}>
           <div style={{ ...s.modalContent, minWidth: '420px' }}>
@@ -368,7 +448,40 @@ function App() {
         </div>
       )}
 
+      {/* FILTER BAR (Inventory) */}
+      <div style={{ background: 'white', padding: '12px', borderRadius: '12px', marginBottom: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          style={{ ...s.input, flex: 1, minWidth: 220 }}
+          placeholder="Cari SPK / XFD / RAK / SIZE / TO..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value.toUpperCase())}
+        />
+
+        <select style={{ ...s.input, minWidth: 140 }} value={filterRack} onChange={e => setFilterRack(e.target.value)}>
+          <option value="ALL">Semua Rak</option>
+          {DAFTAR_RAK.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+
+        <select style={{ ...s.input, minWidth: 140 }} value={filterSize} onChange={e => setFilterSize(e.target.value)}>
+          <option value="ALL">Semua Size</option>
+          {sizeOptions.map(sz => <option key={sz} value={sz}>{sz}</option>)}
+        </select>
+
+        <select style={{ ...s.input, minWidth: 180 }} value={filterTo} onChange={e => setFilterTo(e.target.value)}>
+          <option value="ALL">Semua Tujuan (TO)</option>
+          {toOptions.map(to => <option key={to} value={to}>{to}</option>)}
+        </select>
+
+        <button
+          onClick={() => { setSearchTerm(''); setFilterRack('ALL'); setFilterSize('ALL'); setFilterTo('ALL'); }}
+          style={{ ...s.btn, background: '#7f8c8d' }}
+        >
+          Reset Filter
+        </button>
+      </div>
+
       <div style={{ display: 'flex', gap: '20px' }}>
+        {/* INPUT TRANSAKSI */}
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
             <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>Input Transaksi</h3>
@@ -406,50 +519,132 @@ function App() {
           </div>
         </div>
 
-        <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '12px' }}>
-          <input
-            style={{ width: '100%', padding: '15px', marginBottom: '15px', borderRadius: '10px', border: '2px solid #1a237e', boxSizing: 'border-box' }}
-            placeholder="Cari SPK, Rak, atau XFD"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value.toUpperCase())}
-          />
+        {/* INVENTORY + HISTORY */}
+        <div style={{ flex: '2' }}>
+          {/* INVENTORY GRID */}
+          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', marginBottom: '15px' }}>
+            <h3 style={{ marginTop: 0 }}>Inventory Per Rak</h3>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-            {DAFTAR_RAK.map(rack => {
-              const items = inventory.filter(i => {
-                const q = searchTerm.trim();
-                if (!q) return i.rack === rack;
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+              {filteredRacks.map(rack => {
+                const items = inventory
+                  .filter(i => i.rack === rack)
+                  .filter(inventoryItemMatch);
+
+                const total = items.reduce((a, b) => a + b.stock, 0);
 
                 return (
-                  i.rack === rack &&
-                  (
-                    (i.spk || '').includes(q) ||
-                    (i.xfd || '').includes(q) ||
-                    (i.rack || '').includes(q)
-                  )
-                );
-              });
+                  <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
+                    <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
 
-              const total = items.reduce((a, b) => a + b.stock, 0);
-
-              return (
-                <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
-
-                  {items.map((it, idx) => (
-                    <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <strong>{it.spk}</strong>
-                        <span style={{ color: '#e67e22' }}>{it.xfd}</span>
+                    {items.map((it, idx) => (
+                      <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <strong>{it.spk}</strong>
+                          <span style={{ color: '#e67e22' }}>{it.xfd}</span>
+                        </div>
+                        <div>Stok: {it.stock}/{it.target} | Size: {it.size}</div>
+                        <div style={{ color: '#3498db' }}>To: {it.last_to || '-'}</div>
                       </div>
-                      <div>Stok: {it.stock}/{it.target} | Size: {it.size}</div>
-                      <div style={{ color: '#3498db' }}>To: {it.last_to || '-'}</div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {/* HISTORY PANEL */}
+          <div style={{ background: 'white', padding: '20px', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ marginTop: 0, marginBottom: 0 }}>Riwayat Transaksi Terakhir (100 data)</h3>
+              <button onClick={() => setShowHistory(v => !v)} style={{ ...s.btn, background: showHistory ? '#e67e22' : '#2ecc71' }}>
+                {showHistory ? "Sembunyikan" : "Tampilkan"}
+              </button>
+            </div>
+
+            {showHistory && (
+              <>
+                <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <input
+                    style={{ ...s.input, flex: 1, minWidth: 220 }}
+                    placeholder="Cari (SPK/Style/Size/Rak/From/To/Operator/IN/OUT)"
+                    value={trxSearch}
+                    onChange={e => setTrxSearch(e.target.value.toUpperCase())}
+                  />
+
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: '#666' }}>Dari</span>
+                    <input style={s.input} type="date" value={trxDateFrom} onChange={e => setTrxDateFrom(e.target.value)} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: '#666' }}>Sampai</span>
+                    <input style={s.input} type="date" value={trxDateTo} onChange={e => setTrxDateTo(e.target.value)} />
+                  </div>
+
+                  <button
+                    onClick={() => { setTrxSearch(''); setTrxDateFrom(''); setTrxDateTo(''); }}
+                    style={{ ...s.btn, background: '#7f8c8d' }}
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 12, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#f2f4f7' }}>
+                        <th style={s.th}>Created</th>
+                        <th style={s.th}>Waktu Input</th>
+                        <th style={s.th}>Type</th>
+                        <th style={s.th}>SPK</th>
+                        <th style={s.th}>Style</th>
+                        <th style={s.th}>Size</th>
+                        <th style={s.th}>Rak</th>
+                        <th style={s.th}>IN</th>
+                        <th style={s.th}>OUT</th>
+                        <th style={s.th}>From</th>
+                        <th style={s.th}>To</th>
+                        <th style={s.th}>Operator</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredHistory.map((r) => {
+                        const qtyIn = Number(r.qty_in || 0);
+                        const qtyOut = Number(r.qty_out || 0);
+                        const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
+
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={s.td}>{r.created?.slice(0, 19)?.replace('T', ' ')}</td>
+                            <td style={s.td}>{r.waktu_input || '-'}</td>
+                            <td style={{ ...s.td, fontWeight: 'bold', color: type === 'OUT' ? '#e74c3c' : '#2ecc71' }}>{type}</td>
+                            <td style={s.td}>{r.spk_number}</td>
+                            <td style={s.td}>{r.style_name}</td>
+                            <td style={s.td}>{r.size}</td>
+                            <td style={s.td}>{r.rack_location}</td>
+                            <td style={s.td}>{qtyIn}</td>
+                            <td style={s.td}>{qtyOut}</td>
+                            <td style={s.td}>{r.source_from || '-'}</td>
+                            <td style={s.td}>{r.destination || '-'}</td>
+                            <td style={s.td}>{r.operator || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                      {filteredHistory.length === 0 && (
+                        <tr>
+                          <td colSpan={12} style={{ ...s.td, textAlign: 'center', color: '#888', padding: 16 }}>
+                            Tidak ada data yang cocok dengan filter.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
@@ -460,7 +655,9 @@ const s = {
   input: { padding: '12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '14px', outline: 'none' },
   btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999, background: 'rgba(0,0,0,0.35)' },
-  modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center', minWidth: '350px' }
+  modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center', minWidth: '350px' },
+  th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #ddd', whiteSpace: 'nowrap' },
+  td: { padding: '8px', whiteSpace: 'nowrap' }
 };
 
 export default App;
