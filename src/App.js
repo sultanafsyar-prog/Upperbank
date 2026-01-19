@@ -25,27 +25,6 @@ function App() {
     type: 'IN', source_dest: '', rack: '', operator: ''
   });
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await pb.collection('users').authWithPassword(loginEmail, loginPassword);
-      setIsLoggedIn(true);
-      fetchData();
-    } catch (err) {
-      pb.authStore.clear();
-      setIsLoggedIn(false);
-      alert("⚠️ LOGIN GAGAL: Periksa kembali email dan password!");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    pb.authStore.clear();
-    setIsLoggedIn(false);
-  };
-
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
@@ -72,40 +51,32 @@ function App() {
             stock: 0,
             target: 0,
             xfd: '',
-            // --- FIX: pisahkan tujuan OUT dan asal IN ---
-            last_from: '',        // asal terakhir (IN)
-            last_to: '',          // tujuan terakhir (OUT)
-            last_move: '',        // transaksi terakhir: 'IN' / 'OUT'
-            last_created: '',     // created terakhir untuk key ini
-            last_out_created: ''  // created terakhir khusus OUT
+            last_from: '',
+            last_to: '',
+            last_move: '',
+            last_created: '',
+            last_out_created: ''
           };
         }
 
         const qtyIn = Number(curr.qty_in || 0);
         const qtyOut = Number(curr.qty_out || 0);
-
-        // stock akumulasi
         acc[key].stock += (qtyIn - qtyOut);
 
-        // target & xfd update
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
 
-        // urutan transaksi berdasarkan created (ISO string)
         const created = curr.created || '';
 
-        // simpan transaksi terakhir (untuk label IN/OUT terakhir)
         if (!acc[key].last_created || created > acc[key].last_created) {
           acc[key].last_created = created;
           acc[key].last_move = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : acc[key].last_move);
         }
 
-        // simpan asal terakhir jika IN
         if (qtyIn > 0 && curr.source_from) {
           acc[key].last_from = curr.source_from;
         }
 
-        // simpan tujuan terakhir jika OUT (jangan ketimpa IN)
         if (qtyOut > 0 && curr.destination) {
           if (!acc[key].last_out_created || created > acc[key].last_out_created) {
             acc[key].last_out_created = created;
@@ -122,12 +93,35 @@ function App() {
     }
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    if (isLoggedIn) {
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await pb.collection('users').authWithPassword(loginEmail, loginPassword);
+      setIsLoggedIn(true);
       fetchData();
-      const unsubscribe = pb.collection('upper_stock').subscribe('*', () => fetchData());
-      return () => { unsubscribe.then(unsub => unsub()); };
+    } catch (err) {
+      pb.authStore.clear();
+      setIsLoggedIn(false);
+      alert("⚠️ LOGIN GAGAL: Periksa kembali email dan password!");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    pb.authStore.clear();
+    setIsLoggedIn(false);
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    fetchData();
+
+    const unsubPromise = pb.collection('upper_stock').subscribe('*', () => fetchData());
+    return () => {
+      unsubPromise.then(unsub => unsub());
+    };
   }, [fetchData, isLoggedIn]);
 
   const handleSubmit = async (e) => {
@@ -136,7 +130,7 @@ function App() {
     setIsSubmitting(true);
 
     const sekarang = new Date();
-    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-')} ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+    const waktuLokal = `${sekarang.toLocaleDateString('id-ID').replace(/\//g, '-') } ${sekarang.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
 
     try {
       await pb.collection('upper_stock').create({
@@ -176,7 +170,9 @@ function App() {
     });
   };
 
-
+  // ============================
+  // XLSX EXPORT
+  // ============================
   const exportToXlsx = (rows, sheetName, fileName) => {
     if (!rows || rows.length === 0) {
       alert("⚠️ Tidak ada data untuk diexport.");
@@ -227,6 +223,9 @@ function App() {
     exportToXlsx(rows, "Raw_Transactions", `Raw_Transactions_${stamp}.xlsx`);
   };
 
+  // ============================
+  // LOGIN UI
+  // ============================
   if (!isLoggedIn) return (
     <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
       <div style={s.modalContent}>
@@ -234,12 +233,17 @@ function App() {
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
           <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
-          <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}> {loading ? "PROSES..." : "MASUK"} </button>
+          <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>
+            {loading ? "PROSES..." : "MASUK"}
+          </button>
         </form>
       </div>
     </div>
   );
 
+  // ============================
+  // TV MODE
+  // ============================
   if (viewMode === 'TV') return (
     <div style={{ background: '#050714', minHeight: '100vh', padding: '15px', color: 'white', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       <style>{`
@@ -256,8 +260,13 @@ function App() {
 
       <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 30px', marginBottom: '15px', borderBottom: '4px solid #3498db' }}>
         <div>
-          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}><img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />PRODUCTION STOCK MONITOR</h1>
-          <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}</p>
+          <h1 style={{ fontSize: '32px', margin: 0, color: '#3498db', letterSpacing: '2px' }}>
+            <img src="/logo.png" alt="Logo" style={{ height: '40px', marginRight: '10px' }} />
+            PRODUCTION STOCK MONITOR
+          </h1>
+          <p style={{ margin: 0, color: '#888', fontSize: '14px', fontWeight: 'bold' }}>
+            SINKRONISASI AKTIF: {new Date().toLocaleTimeString()}
+          </p>
         </div>
         <button onClick={() => setViewMode('ADMIN')} style={{ ...s.btn, background: '#e74c3c' }}>EXIT</button>
       </div>
@@ -266,16 +275,19 @@ function App() {
         {DAFTAR_RAK.map(rack => {
           const items = inventory.filter(i => i.rack === rack);
           const total = items.reduce((a, b) => a + b.stock, 0);
+
           return (
             <div key={rack} className={`glass-card ${total > 0 ? 'active-rack' : ''}`} style={{ padding: '12px', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '5px' }}>
                 <span style={{ fontSize: '24px', color: '#3498db', fontWeight: '900' }}>{rack}</span>
                 <span style={{ fontSize: '18px', background: '#3498db', color: '#000', padding: '2px 10px', borderRadius: '20px', fontWeight: 'bold' }}>{total}</span>
               </div>
+
               <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
                 {items.map((it, idx) => {
                   const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
                   const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
+
                   return (
                     <div key={idx} style={{ padding: '12px 0', borderBottom: '1px solid #222' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -296,8 +308,6 @@ function App() {
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 'bold' }}>
                         <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
-
-                        {/* FIX: tampilkan tujuan pengiriman OUT terakhir (tidak ketimpa IN) */}
                         <span className={percent >= 100 ? 'blink-urgent' : ''} style={{
                           color: '#3498db',
                           background: 'rgba(52, 152, 219, 0.1)',
@@ -319,6 +329,9 @@ function App() {
     </div>
   );
 
+  // ============================
+  // ADMIN MODE
+  // ============================
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
@@ -326,19 +339,14 @@ function App() {
           <img src="/logo.png" alt="Logo" style={{ height: '30px', marginRight: '10px' }} />
           SUPERMARKET STOCK ADMIN
         </h2>
+
         <div>
           <button onClick={() => setViewMode('TV')} style={{ ...s.btn, background: '#8e44ad', marginRight: '10px' }}>DASHBOARD TV</button>
-
-          {/* TOMBOL EXPORT */}
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085', marginRight: '10px' }}>
-            EXPORT XLSX
-          </button>
-
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085', marginRight: '10px' }}>EXPORT XLSX</button>
           <button onClick={handleLogout} style={{ ...s.btn, background: '#e74c3c' }}>LOGOUT</button>
         </div>
       </nav>
 
-      {/* MODAL EXPORT XLSX */}
       {showExportModal && (
         <div style={s.modalOverlay}>
           <div style={{ ...s.modalContent, minWidth: '420px' }}>
@@ -346,24 +354,13 @@ function App() {
             <p style={{ color: '#666', marginTop: 0 }}>Pilih jenis data yang ingin diexport.</p>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => { handleExportInventoryXlsx(); setShowExportModal(false); }}
-                style={{ ...s.btn, background: '#1a237e' }}
-              >
+              <button onClick={() => { handleExportInventoryXlsx(); setShowExportModal(false); }} style={{ ...s.btn, background: '#1a237e' }}>
                 Export Inventory Summary
               </button>
-
-              <button
-                onClick={() => { handleExportRawXlsx(); setShowExportModal(false); }}
-                style={{ ...s.btn, background: '#8e44ad' }}
-              >
+              <button onClick={() => { handleExportRawXlsx(); setShowExportModal(false); }} style={{ ...s.btn, background: '#8e44ad' }}>
                 Export Raw Transaksi
               </button>
-
-              <button
-                onClick={() => setShowExportModal(false)}
-                style={{ ...s.btn, background: '#e74c3c' }}
-              >
+              <button onClick={() => setShowExportModal(false)} style={{ ...s.btn, background: '#e74c3c' }}>
                 Batal
               </button>
             </div>
@@ -375,6 +372,7 @@ function App() {
         <div style={{ flex: '1' }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
             <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>Input Transaksi</h3>
+
             <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
               <button type="button" onClick={() => setFormData({ ...formData, type: 'IN' })} style={{ flex: 1, padding: '12px', background: formData.type === 'IN' ? '#2ecc71' : '#eee', color: formData.type === 'IN' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>IN (Masuk)</button>
               <button type="button" onClick={() => setFormData({ ...formData, type: 'OUT' })} style={{ flex: 1, padding: '12px', background: formData.type === 'OUT' ? '#e74c3c' : '#eee', color: formData.type === 'OUT' ? 'white' : '#666', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>OUT (Keluar)</button>
@@ -415,16 +413,29 @@ function App() {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value.toUpperCase())}
           />
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
             {DAFTAR_RAK.map(rack => {
-              const items = inventory.filter(i =>
-                i.rack === rack &&
-                (i.spk.includes(searchTerm) || i.xfd.includes(searchTerm))
-              );
+              const items = inventory.filter(i => {
+                const q = searchTerm.trim();
+                if (!q) return i.rack === rack;
+
+                return (
+                  i.rack === rack &&
+                  (
+                    (i.spk || '').includes(q) ||
+                    (i.xfd || '').includes(q) ||
+                    (i.rack || '').includes(q)
+                  )
+                );
+              });
+
               const total = items.reduce((a, b) => a + b.stock, 0);
+
               return (
                 <div key={rack} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '10px', borderTop: `5px solid ${total > 0 ? '#3498db' : '#ddd'}` }}>
                   <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px' }}>{rack} ({total})</div>
+
                   {items.map((it, idx) => (
                     <div key={idx} onClick={() => handlePickFromRack(it)} style={{ fontSize: '11px', marginBottom: '5px', padding: '5px', background: '#f8f9fa', borderRadius: '4px', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -432,8 +443,6 @@ function App() {
                         <span style={{ color: '#e67e22' }}>{it.xfd}</span>
                       </div>
                       <div>Stok: {it.stock}/{it.target} | Size: {it.size}</div>
-
-                      {/* FIX: tampilkan tujuan OUT terakhir */}
                       <div style={{ color: '#3498db' }}>To: {it.last_to || '-'}</div>
                     </div>
                   ))}
