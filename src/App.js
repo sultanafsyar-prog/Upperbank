@@ -92,11 +92,6 @@ function App() {
             stock: 0,
             target: 0,
             xfd: '',
-            last_from: '',
-            last_to: '',
-            last_move: '',
-            last_created: '',
-            last_out_created: ''
           };
         }
 
