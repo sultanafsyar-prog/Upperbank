@@ -13,39 +13,6 @@ const DAFTAR_RAK = RACK_LETTERS.flatMap((l) =>
 // Urutan kolom TV: I, H, F, E, D
 const TV_COLUMN_ORDER = ['I', 'H', 'F', 'E', 'D'];
 
-// =============== Sparkline Component (mirip saham) ===============
-function Sparkline({ data, width = 120, height = 26 }) {
-  if (!data || data.length < 2) return null;
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  const points = data
-    .map((v, i) => {
-      const x = (i / (data.length - 1)) * width;
-      const y = height - ((v - min) / range) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-
-  const trendUp = data[data.length - 1] >= data[0];
-  const stroke = trendUp ? '#2ecc71' : '#e74c3c';
-  const fill = trendUp ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)';
-
-  return (
-    <svg width={width} height={height} style={{ display: 'block' }}>
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="2" />
-      {/* area soft */}
-      <polygon
-        points={`${points} ${width},${height} 0,${height}`}
-        fill={fill}
-        stroke="none"
-      />
-    </svg>
-  );
-}
-
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
   const [loginEmail, setLoginEmail] = useState('');
@@ -297,79 +264,8 @@ function App() {
       .reduce((sum, it) => sum + Number(it.stock || 0), 0);
   };
 
-  // Helper: sparkline data per rack (pakai transaksi terbaru)
-  const getRackSparkline = (rack, points = 18) => {
-    const current = getCurrentRackTotal(rack);
-    const recs = rawRecords
-      .filter((r) => r.rack_location === rack)
-      .slice(0, points); // ini DESC (paling baru dulu)
-
-    if (!recs.length) return [current, current];
-
-    let t = current;
-    const seriesBack = [t];
-    for (const r of recs) {
-      const delta = Number(r.qty_in || 0) - Number(r.qty_out || 0);
-      t = t - delta; // mundur ke kondisi sebelumnya
-      seriesBack.push(t);
-    }
-    return seriesBack.reverse(); // jadi kronologis
-  };
-
-  // Helper: transaksi terakhir rack (untuk Δ)
-  const getLastRackMove = (rack) => {
-    const last = rawRecords.find((r) => r.rack_location === rack);
-    if (!last) return null;
-    const qtyIn = Number(last.qty_in || 0);
-    const qtyOut = Number(last.qty_out || 0);
-    const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
-    const delta = qtyIn - qtyOut; // + berarti nambah stock, - berarti keluar
-    return {
-      type,
-      delta,
-      to: last.destination || '',
-      from: last.source_from || '',
-      time: last.created ? last.created.slice(11, 16) : ''
-    };
-  };
-
   // ============================
-  // TV Ticker bawah: riwayat transaksi
-  // ============================
-  const tvTickerItems = (rawRecords || []).slice(0, 25).map((r) => {
-    const qtyIn = Number(r.qty_in || 0);
-    const qtyOut = Number(r.qty_out || 0);
-    const type = qtyOut > 0 ? 'OUT' : (qtyIn > 0 ? 'IN' : '-');
-    const qty = qtyOut > 0 ? qtyOut : qtyIn;
-    const time = r.created ? r.created.slice(11, 16) : '';
-    const arrow = type === 'OUT' ? `→ ${r.destination || '-'}` : `← ${r.source_from || '-'}`;
-    return `[${time}] ${type} ${qty} | ${r.spk_number || '-'} | ${r.rack_location || '-'} ${arrow} | OP ${r.operator || '-'}`;
-  });
-
-  const tvTickerText = tvTickerItems.length ? tvTickerItems.join('   •   ') : 'Belum ada transaksi';
-  const tvTickerDuration = Math.max(25, Math.min(90, Math.round(tvTickerText.length / 8)));
-
-  // ============================
-  // LOGIN UI
-  // ============================
-  if (!isLoggedIn)
-    return (
-      <div style={{ ...s.modalOverlay, background: '#1a237e' }}>
-        <div style={s.modalContent}>
-          <h2>LOGIN SYSTEM</h2>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <input style={s.input} type="email" placeholder="Email" onChange={(e) => setLoginEmail(e.target.value)} required />
-            <input style={s.input} type="password" placeholder="Password" onChange={(e) => setLoginPassword(e.target.value)} required />
-            <button type="submit" disabled={loading} style={{ ...s.btn, background: '#1a237e' }}>
-              {loading ? 'PROSES...' : 'MASUK'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-
-  // ============================
-  // TV MODE UI (style saham)
+  // TV Mode UI (per rack, target, stock, xfd)
   // ============================
   if (viewMode === 'TV') {
     const rackGroups = TV_COLUMN_ORDER.map((letter) =>
@@ -435,18 +331,13 @@ function App() {
 
                     const notMetCount = items.filter((it) => Number(it.target || 0) > 0 && Number(it.stock || 0) < Number(it.target || 0)).length;
 
-                    const spark = getRackSparkline(rack, 18);
-                    const lastMove = getLastRackMove(rack);
-                    const deltaText = lastMove ? `${lastMove.delta >= 0 ? '+' : ''}${lastMove.delta}` : '0';
-                    const deltaColor = lastMove ? (lastMove.delta >= 0 ? '#2ecc71' : '#e74c3c') : '#888';
-
                     return (
                       <div
                         key={rack}
                         className={`glass-card ${totalStock > 0 ? 'active-rack' : ''}`}
                         style={{ padding: '10px', display: 'flex', flexDirection: 'column', height: 'calc((80vh - 80px) / 6)' }}
                       >
-                        {/* Header rack: total + shortfall + sparkline */}
+                        {/* Header rack: total + shortfall */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', borderBottom: '1px solid #333', paddingBottom: '6px', marginBottom: '6px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', minWidth: '90px' }}>
                             <span style={{ fontSize: '18px', color: '#3498db', fontWeight: 900 }}>{rack}</span>
@@ -461,54 +352,30 @@ function App() {
                               Total: <span style={{ color: '#3498db' }}>{totalStock}</span>
                             </div>
 
-                            {/* Δ perubahan terakhir (kayak saham) */}
-                            <div style={{ fontSize: '12px', fontWeight: 900, color: deltaColor }}>
-                              Δ {deltaText} {lastMove ? `(${lastMove.type})` : ''}
+                            {/* Δ perubahan terakhir */}
+                            <div style={{ fontSize: '12px', fontWeight: 900, color: '#888' }}>
+                              Δ 0
                             </div>
-
-                            <Sparkline data={spark} width={130} height={24} />
                           </div>
                         </div>
 
                         {/* List SPK di rack */}
                         <div style={{ flex: 1, overflowY: 'auto' }} className="ticker-container">
-                          {items.map((it, idx) => {
-                            const percent = it.target > 0 ? (it.stock / it.target) * 100 : 0;
-                            const barColor = percent >= 100 ? '#2ecc71' : (percent >= 50 ? '#3498db' : '#f1c40f');
-
-                            return (
-                              <div key={idx} style={{ padding: '6px 0', borderBottom: '1px solid #222' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <strong style={{ color: '#fff', fontSize: '12px' }}>{it.spk}</strong>
-                                    <span style={{ color: '#e67e22', fontSize: '10px', fontWeight: 'bold' }}>XFD: {it.xfd || '-'}</span>
-                                  </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: barColor }}>
-                                      {it.stock}<span style={{ fontSize: '10px', color: '#666' }}>/{it.target}</span>
-                                    </div>
-                                  </div>
+                          {items.map((it, idx) => (
+                            <div key={idx} style={{ padding: '6px 0', borderBottom: '1px solid #222' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <strong style={{ color: '#fff', fontSize: '12px' }}>{it.spk}</strong>
+                                  <span style={{ color: '#e67e22', fontSize: '10px', fontWeight: 'bold' }}>XFD: {it.xfd || '-'}</span>
                                 </div>
-
-                                <div className="progress-bg">
-                                  <div className="progress-fill" style={{ width: `${Math.min(percent, 100)}%`, background: barColor }}></div>
-                                </div>
-
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 'bold' }}>
-                                  <span style={{ color: '#aaa' }}>SZ: {it.size}</span>
-                                  <span className={percent >= 100 ? 'blink-urgent' : ''} style={{
-                                    color: '#3498db',
-                                    background: 'rgba(52, 152, 219, 0.1)',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(52, 152, 219, 0.3)'
-                                  }}>
-                                    TO: {it.last_to || 'SUPERMARKET'}
-                                  </span>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#3498db' }}>
+                                    {it.stock}<span style={{ fontSize: '10px', color: '#666' }}>/{it.target}</span>
+                                  </div>
                                 </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
@@ -517,17 +384,6 @@ function App() {
               </div>
             );
           })}
-        </div>
-
-        {/* Market tape: riwayat transaksi bawah */}
-        <div className="glass-card tv-ticker">
-          <div className="tv-ticker-label">LAST MOVEMENTS</div>
-          <div className="tv-ticker-track">
-            <div className="tv-ticker-content" style={{ animationDuration: `${tvTickerDuration}s` }}>
-              <div className="tv-ticker-text">{tvTickerText}</div>
-              <div className="tv-ticker-text">{tvTickerText}</div>
-            </div>
-          </div>
         </div>
       </div>
     );
