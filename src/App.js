@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
-// Generasi Rak Otomatis I, H, F, E, D (01-06)
+// Konfigurasi Rak I-D (01-06)
 const HURUF_RAK = ["I", "H", "F", "E", "D"];
 const NOMOR_RAK = ["01", "02", "03", "04", "05", "06"];
 const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => NOMOR_RAK.map(n => `${h}-${n}`));
@@ -30,31 +30,43 @@ function App() {
   const fetchData = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      // Ambil histori untuk Live Activity
       const res = await pb.collection('upper_stock').getList(1, 50, { sort: '-created', requestKey: null });
       setRawRecords(res.items);
 
-      // Ambil semua data untuk kalkulasi stok per Rak + SPK + Size
       const allRecords = await pb.collection('upper_stock').getFullList({ sort: 'created', requestKey: null });
+      
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
           acc[key] = {
-            spk: curr.spk_number, style: curr.style_name, size: curr.size,
-            rack: curr.rack_location, stock: 0, target: 0, xfd: '', last_dest: ''
+            spk: curr.spk_number, 
+            style: curr.style_name || '-', 
+            size: curr.size || '-',
+            rack: curr.rack_location, 
+            stock: 0, 
+            target: 0, 
+            xfd: '', 
+            last_to: '', // Info tujuan terakhir
+            last_from: '' // Info asal terakhir
           };
         }
+        
         const qIn = Number(curr.qty_in || 0);
         const qOut = Number(curr.qty_out || 0);
         acc[key].stock += (qIn - qOut);
         
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
-        if (qOut > 0) acc[key].last_dest = curr.destination; 
+        
+        // Update Tracking di tingkat SPK
+        if (qOut > 0) acc[key].last_to = curr.destination;
+        if (qIn > 0) acc[key].last_from = curr.source_from;
+        
         return acc;
       }, {});
+
       setInventory(Object.values(summary).filter(i => i.stock > 0));
-    } catch (error) { console.error("Sync Error:", error); }
+    } catch (error) { console.error(error); }
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -74,18 +86,6 @@ function App() {
     } catch (err) { alert("⚠️ LOGIN GAGAL!"); } finally { setLoading(false); }
   };
 
-  const handleResetData = async () => {
-    const konfirmasi = window.prompt("Ketik 'HAPUS SEMUA' untuk mengosongkan database:");
-    if (konfirmasi !== "HAPUS SEMUA") return;
-    setLoading(true);
-    try {
-      const all = await pb.collection('upper_stock').getFullList({ fields: 'id' });
-      await Promise.all(all.map(r => pb.collection('upper_stock').delete(r.id)));
-      alert("Database Berhasil Dikosongkan!");
-      fetchData();
-    } catch (e) { alert("Gagal Reset"); } finally { setLoading(false); }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -98,27 +98,31 @@ function App() {
         style_name: formData.style_name.toUpperCase(),
         qty_in: formData.type === 'IN' ? Number(formData.qty) : 0,
         qty_out: formData.type === 'OUT' ? Number(formData.qty) : 0,
+        target_qty: Number(formData.target_qty),
         source_from: formData.type === 'IN' ? formData.source_dest : '',
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
         waktu_input: waktu
       });
-      alert("✅ Tersimpan!");
+      alert("✅ Berhasil!");
       setFormData({ ...formData, spk_number: '', style_name: '', size: '', qty: 0, target_qty: 0, xfd_date: '', source_dest: '' });
     } catch (err) { alert("❌ Gagal Simpan!"); } finally { setIsSubmitting(false); }
   };
 
-  const handlePick = (it) => {
-    setFormData({ ...formData, spk_number: it.spk, style_name: it.style, size: it.size, rack: it.rack, type: 'OUT' });
+  const exportToXlsx = (rows, fileName) => {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
   };
 
   if (!isLoggedIn) return (
     <div style={s.modalOverlay}><div style={s.modalContent}>
-      <h2 style={{color:'#1a237e'}}>SYSTEM LOGIN</h2>
+      <h2>LOGIN SYSTEM</h2>
       <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:10}}>
         <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
         <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
-        <button type="submit" style={{...s.btn, background:'#1a237e'}}>{loading ? 'LOADING...' : 'MASUK'}</button>
+        <button type="submit" style={{...s.btn, background:'#1a237e'}}>MASUK</button>
       </form>
     </div></div>
   );
@@ -126,7 +130,7 @@ function App() {
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>SUPERMARKET STOCK</h2>
+        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: 40, marginRight: 10 }} />SUPERMARKET CONTROL TRACKING</h2>
         <div>
           <button onClick={() => setViewMode(viewMode === 'ADMIN' ? 'TV' : 'ADMIN')} style={{ ...s.btn, background: '#8e44ad', marginRight: 10 }}>MODE {viewMode === 'ADMIN' ? 'TV' : 'ADMIN'}</button>
           <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085' }}>MENU DATA</button>
@@ -135,7 +139,6 @@ function App() {
 
       {viewMode === 'ADMIN' ? (
         <div style={{ display: 'flex', gap: '20px' }}>
-          {/* FORM INPUT KOMPLIT */}
           <div style={{ flex: 1, background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
             <h3>Input Transaksi</h3>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -155,29 +158,30 @@ function App() {
                 <option value="">Pilih Rak</option>
                 {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder="Tujuan / Tracking" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Ke Mana / Dari Mana?" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
               <button type="submit" style={{ ...s.btn, background: '#1a237e', padding: 15 }}>SIMPAN</button>
             </form>
           </div>
 
-          {/* MONITOR RAK ADMIN */}
           <div style={{ flex: 2.5, background: 'white', padding: '20px', borderRadius: '12px' }}>
-            <input style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="Cari SPK / Style..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
+            <input style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="Cari SPK/Style..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
             <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
               {HURUF_RAK.map(h => (
-                <div key={h} style={{ flex: 1, minWidth: '150px' }}>
-                  <div style={{ textAlign: 'center', background: '#1a237e', color:'white', padding: '5px', fontWeight: 'bold', borderRadius:4 }}>RAK {h}</div>
+                <div key={h} style={{ flex: 1, minWidth: '160px' }}>
+                  <div style={{ textAlign: 'center', background: '#1a237e', color:'white', padding: '5px', fontWeight: 'bold' }}>RAK {h}</div>
                   {NOMOR_RAK.map(n => {
                     const r = `${h}-${n}`;
                     const items = inventory.filter(i => i.rack === r && (i.spk.includes(searchTerm) || i.style.includes(searchTerm)));
                     const total = items.reduce((a, b) => a + b.stock, 0);
                     return (
-                      <div key={r} style={{ padding: '8px', border: '1px solid #eee', marginTop: '5px', background: total > 0 ? '#e3f2fd' : 'white', borderRadius: '4px' }}>
-                        <div style={{ fontWeight: 'bold', fontSize: '12px' }}>{r} ({total})</div>
+                      <div key={r} style={{ padding: '8px', border: '1px solid #eee', marginTop: '5px', background: total > 0 ? '#e3f2fd' : 'white', borderRadius:4 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '11px' }}>{r} ({total})</div>
                         {items.map((it, idx) => (
-                          <div key={idx} onClick={() => handlePick(it)} style={{ fontSize: '10px', marginTop: 5, cursor:'pointer', borderTop:'1px solid #f0f0f0', paddingTop:3 }}>
-                            <b>{it.spk}</b> | Sz: {it.size} <br/> Qty: {it.stock}/{it.target}
+                          <div key={idx} style={{ fontSize: '9px', marginTop: 5, borderTop: '1px solid #f0f0f0', paddingTop: 3 }}>
+                            <b>{it.spk}</b> (Size:{it.size}) <br/>
+                            Qty: {it.stock}/{it.target} <br/>
+                            <span style={{color:'#3498db'}}>To: {it.last_to || '-'}</span>
                           </div>
                         ))}
                       </div>
@@ -189,9 +193,9 @@ function App() {
           </div>
         </div>
       ) : (
-        /* DASHBOARD TV: KOMPLIT DENGAN TRACKING & DETAIL */
+        /* DASHBOARD TV DENGAN DETAIL TO: */
         <div style={{ display: 'flex', gap: '15px' }}>
-          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
             {HURUF_RAK.map(h => (
               <div key={h}>
                 <div style={{background:'#3498db', color:'black', textAlign:'center', fontWeight:'bold', padding:5, borderRadius:4, marginBottom:8}}>RAK {h}</div>
@@ -200,15 +204,16 @@ function App() {
                   const itms = inventory.filter(i => i.rack === r);
                   const ttl = itms.reduce((a,b) => a + b.stock, 0);
                   return (
-                    <div key={r} style={{background:'#161b22', padding:8, borderRadius:8, marginBottom:8, border: ttl > 0 ? '1px solid #3498db' : '1px solid #333', minHeight:105, color:'white'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid #333', fontSize:13, marginBottom:5}}>
+                    <div key={r} style={{background:'#161b22', padding:8, borderRadius:8, marginBottom:8, border: ttl > 0 ? '1px solid #3498db' : '1px solid #333', minHeight:115, color:'white'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid #333', fontSize:14, marginBottom:5}}>
                         <b style={{color:'#3498db'}}>{r}</b> <b>{ttl}</b>
                       </div>
-                      {itms.slice(0, 3).map((it, idx) => (
-                        <div key={idx} style={{fontSize:9, marginBottom:4}}>
+                      {itms.map((it, idx) => (
+                        <div key={idx} style={{fontSize:10, marginTop:4, background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '4px'}}>
                           <b>{it.spk}</b> | {it.style} <br/>
-                          Sz: {it.size} | Qty: {it.stock} <br/>
-                          <span style={{color:'#e67e22'}}>XFD: {it.xfd}</span>
+                          Size: {it.size} | <b>{it.stock}/{it.target}</b> <br/>
+                          <span style={{color:'#3498db'}}>To: {it.last_to || '-'}</span> <br/>
+                          <span style={{color:'#e67e22', fontSize:9}}>XFD: {it.xfd}</span>
                         </div>
                       ))}
                     </div>
@@ -218,11 +223,11 @@ function App() {
             ))}
           </div>
           <div style={{ flex: 1, background: '#161b22', padding: 15, borderRadius: 12, borderLeft: '4px solid #3498db', color:'white' }}>
-            <h4 style={{textAlign:'center', color:'#3498db', marginTop:0}}>LIVE TRACKING</h4>
+            <h4 style={{textAlign:'center', color:'#3498db', marginTop:0}}>LIVE ACTIVITY TRANSACTIONS</h4>
             <div style={{maxHeight:'80vh', overflowY:'auto'}}>
               {rawRecords.map((log, i) => (
                 <div key={i} style={{fontSize:10, padding:'8px 0', borderBottom:'1px solid #222'}}>
-                  <b style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</b> | {log.spk_number} | {log.size}
+                  <b style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</b> | {log.spk_number}
                   <div style={{color:'#aaa'}}>Ke/Dari: {log.destination || log.source_from || '-'}</div>
                   <div style={{color:'#666', fontSize:9}}>{log.waktu_input}</div>
                 </div>
@@ -235,11 +240,11 @@ function App() {
       {showExportModal && (
         <div style={s.modalOverlay}>
           <div style={s.modalContent}>
-            <h3>MANAGEMENT DATA</h3>
+            <h3>EXPORT MENU</h3>
             <div style={{display:'flex', flexDirection:'column', gap:10}}>
-               <button onClick={() => setShowExportModal(false)} style={{...s.btn, background:'#95a5a6'}}>TUTUP</button>
-               <hr/>
-               <button onClick={handleResetData} style={{...s.btn, background:'#c0392b'}}>⚠️ RESET DATABASE</button>
+               <button onClick={() => exportToXlsx(inventory, 'Summary_Stock')} style={{...s.btn, background:'#1a237e'}}>Export Summary (XLSX)</button>
+               <button onClick={() => exportToXlsx(rawRecords, 'Log_Transaksi')} style={{...s.btn, background:'#8e44ad'}}>Export Log (XLSX)</button>
+               <button onClick={() => setShowExportModal(false)} style={{...s.btn, background:'#e74c3c'}}>Batal</button>
             </div>
           </div>
         </div>
