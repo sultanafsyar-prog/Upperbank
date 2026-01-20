@@ -31,9 +31,7 @@ function App() {
     try {
       const res = await pb.collection('upper_stock').getList(1, 50, { sort: '-created', requestKey: null });
       setRawRecords(res.items);
-
       const allRecords = await pb.collection('upper_stock').getFullList({ sort: 'created', requestKey: null });
-      
       const summary = allRecords.reduce((acc, curr) => {
         const key = `${curr.spk_number}-${curr.size}-${curr.rack_location}`;
         if (!acc[key]) {
@@ -50,7 +48,6 @@ function App() {
         if (qOut > 0) acc[key].last_to = curr.destination;
         return acc;
       }, {});
-
       setInventory(Object.values(summary).filter(i => i.stock > 0));
     } catch (error) { console.error("Sync Error"); }
   }, [isLoggedIn]);
@@ -62,6 +59,21 @@ function App() {
       return () => { unsub.then(f => f()); };
     }
   }, [fetchData, isLoggedIn]);
+
+  // FITUR KLIK OTOMATIS
+  const handleItemClick = (item) => {
+    if (viewMode !== 'ADMIN') return;
+    setFormData({
+      ...formData,
+      type: 'OUT',
+      spk_number: item.spk,
+      style_name: item.style,
+      size: item.size,
+      rack: item.rack,
+      target_qty: item.target,
+      qty: item.stock // Default qty disamakan dengan sisa stok
+    });
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -108,7 +120,7 @@ function App() {
     <div style={{...s.overlay, background: '#0d1117'}}>
       <div style={{...s.card, width: '350px', border: '1px solid #30363d'}}>
         <h2 style={{color: '#58a6ff', marginBottom: '20px'}}>SYSTEM LOGIN</h2>
-        <h4 style={{color: '#c9d1d9', marginBottom: '5px'}}>PT DIAMOND INTERNATIONAL INDONESIA</h4>
+        <h4 style={{marginBottom: '10px'}}>PT DIAMOND INTERNATIONAL INDONESIA</h4>
         <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:15}}>
           <input style={s.darkInput} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
           <input style={s.darkInput} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
@@ -131,7 +143,6 @@ function App() {
 
       {viewMode === 'ADMIN' ? (
         <div style={{ display: 'flex', gap: '20px' }}>
-          {/* DARK FORM */}
           <div style={{ flex: 1, background: '#161b22', padding: '20px', borderRadius: '12px', border: '1px solid #30363d' }}>
             <h3 style={{color: '#58a6ff'}}>Input Transaksi</h3>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -157,7 +168,6 @@ function App() {
             </form>
           </div>
 
-          {/* DARK RAK MONITOR */}
           <div style={{ flex: 2.5, background: '#161b22', padding: '20px', borderRadius: '12px', border: '1px solid #30363d' }}>
             <input style={{ ...s.darkInput, width: '100%', marginBottom: '15px' }} placeholder="Cari SPK..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
             <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
@@ -172,8 +182,13 @@ function App() {
                       <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: total > 0 ? '#1c2128' : 'transparent', borderRadius: 4 }}>
                         <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{r} ({total})</div>
                         {items.map((it, idx) => (
-                          <div key={idx} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e' }}>
-                            <b>{it.spk}</b> (Size:{it.size}) <br/>
+                          <div 
+                            key={idx} 
+                            onClick={() => handleItemClick(it)}
+                            style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}
+                            title="Klik untuk proses OUT"
+                          >
+                            <b>{it.spk}</b> (Sz:{it.size}) <br/>
                             {it.stock}/{it.target} | <span style={{color:'#f0883e'}}>To: {it.last_to || '-'}</span>
                           </div>
                         ))}
@@ -186,9 +201,9 @@ function App() {
           </div>
         </div>
       ) : (
-        /* DASHBOARD TV (SUDAH DARK) */
+        /* DASHBOARD TV MODE */
         <div style={{ display: 'flex', gap: '15px' }}>
-          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
+          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
             {HURUF_RAK.map(h => (
               <div key={h}>
                 <div style={{background:'#58a6ff', color:'#0d1117', textAlign:'center', fontWeight:'bold', padding:5, borderRadius:4, marginBottom:8}}>RAK {h}</div>
@@ -215,7 +230,6 @@ function App() {
               </div>
             ))}
           </div>
-          {/* SIDEBAR LOG DARK */}
           <div style={{ flex: 1, background: '#161b22', padding: 15, borderRadius: 12, borderLeft: '4px solid #58a6ff' }}>
             <h4 style={{textAlign:'center', color:'#58a6ff', marginTop:0}}>LIVE ACTIVITY</h4>
             <div style={{maxHeight:'80vh', overflowY:'auto'}}>
@@ -223,7 +237,7 @@ function App() {
                 <div key={i} style={{fontSize:10, padding:'8px 0', borderBottom:'1px solid #30363d'}}>
                   <b style={{color: log.qty_in > 0 ? '#3fb950' : '#f85149'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</b> | {log.spk_number}
                   <div style={{color:'#8b949e'}}>Ke/Dari: {log.destination || log.source_from || '-'}</div>
-                  <div style={{color:'#484f58', fontSize:9}}>{log.waktu_input}</div>
+                  <div style={{color:'#507fbc', fontSize:9}}>{log.waktu_input}</div>
                 </div>
               ))}
             </div>
