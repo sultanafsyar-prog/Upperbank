@@ -13,7 +13,7 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Digunakan di tombol Login
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState('ADMIN');
 
@@ -46,8 +46,7 @@ function App() {
             stock: 0, 
             target: 0, 
             xfd: '', 
-            last_to: '', // Info tujuan terakhir
-            last_from: '' // Info asal terakhir
+            last_to: '' 
           };
         }
         
@@ -57,16 +56,13 @@ function App() {
         
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         if (curr.xfd_date) acc[key].xfd = curr.xfd_date;
-        
-        // Update Tracking di tingkat SPK
-        if (qOut > 0) acc[key].last_to = curr.destination;
-        if (qIn > 0) acc[key].last_from = curr.source_from;
+        if (qOut > 0) acc[key].last_to = curr.destination; // Ambil tujuan terakhir
         
         return acc;
       }, {});
 
       setInventory(Object.values(summary).filter(i => i.stock > 0));
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error("Sync Error:", error); }
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -93,15 +89,17 @@ function App() {
     const waktu = `${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
     try {
       await pb.collection('upper_stock').create({
-        ...formData,
         spk_number: formData.spk_number.toUpperCase(),
         style_name: formData.style_name.toUpperCase(),
+        size: formData.size,
         qty_in: formData.type === 'IN' ? Number(formData.qty) : 0,
         qty_out: formData.type === 'OUT' ? Number(formData.qty) : 0,
         target_qty: Number(formData.target_qty),
+        xfd_date: formData.xfd_date,
         source_from: formData.type === 'IN' ? formData.source_dest : '',
         destination: formData.type === 'OUT' ? formData.source_dest : '',
         rack_location: formData.rack,
+        operator: formData.operator,
         waktu_input: waktu
       });
       alert("✅ Berhasil!");
@@ -119,10 +117,13 @@ function App() {
   if (!isLoggedIn) return (
     <div style={s.modalOverlay}><div style={s.modalContent}>
       <h2>LOGIN SYSTEM</h2>
+      <h4>PT DIAMOND INTERNATIONAL INDONESIA</h4>
       <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:10}}>
         <input style={s.input} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
         <input style={s.input} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
-        <button type="submit" style={{...s.btn, background:'#1a237e'}}>MASUK</button>
+        <button type="submit" style={{...s.btn, background:'#1a237e'}}>
+          {loading ? 'SABAR...' : 'MASUK'} 
+        </button>
       </form>
     </div></div>
   );
@@ -130,10 +131,10 @@ function App() {
   return (
     <div style={{ background: '#f4f7f6', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' }}>
       <nav style={{ background: '#1a237e', color: 'white', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Logo" style={{ height: 40, marginRight: 10 }} />SUPERMARKET CONTROL TRACKING</h2>
+        <h2 style={{ margin: 0 }}><img src="/logo.png" alt="Supermarket Icon" style={{ width: 30, height: 30, marginRight: 10 }} /> SUPERMARKET CONTROL TRANSACTION</h2>
         <div>
           <button onClick={() => setViewMode(viewMode === 'ADMIN' ? 'TV' : 'ADMIN')} style={{ ...s.btn, background: '#8e44ad', marginRight: 10 }}>MODE {viewMode === 'ADMIN' ? 'TV' : 'ADMIN'}</button>
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085' }}>MENU DATA</button>
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn, background: '#16a085' }}>EXPORT XLSX</button>
         </div>
       </nav>
 
@@ -158,30 +159,29 @@ function App() {
                 <option value="">Pilih Rak</option>
                 {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <input style={s.input} placeholder="Ke Mana / Dari Mana?" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
+              <input style={s.input} placeholder="Tujuan / Asal" value={formData.source_dest} onChange={e => setFormData({ ...formData, source_dest: e.target.value })} required />
               <input style={s.input} placeholder="Operator" value={formData.operator} onChange={e => setFormData({ ...formData, operator: e.target.value })} required />
-              <button type="submit" style={{ ...s.btn, background: '#1a237e', padding: 15 }}>SIMPAN</button>
+              <button type="submit" style={{ ...s.btn, background: '#1a237e', padding: 15 }}>{isSubmitting ? 'MENYIMPAN...' : 'SIMPAN'}</button>
             </form>
           </div>
 
           <div style={{ flex: 2.5, background: 'white', padding: '20px', borderRadius: '12px' }}>
-            <input style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="Cari SPK/Style..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
+            <input style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="Cari SPK..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
             <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
               {HURUF_RAK.map(h => (
                 <div key={h} style={{ flex: 1, minWidth: '160px' }}>
                   <div style={{ textAlign: 'center', background: '#1a237e', color:'white', padding: '5px', fontWeight: 'bold' }}>RAK {h}</div>
                   {NOMOR_RAK.map(n => {
                     const r = `${h}-${n}`;
-                    const items = inventory.filter(i => i.rack === r && (i.spk.includes(searchTerm) || i.style.includes(searchTerm)));
+                    const items = inventory.filter(i => i.rack === r && i.spk.includes(searchTerm));
                     const total = items.reduce((a, b) => a + b.stock, 0);
                     return (
-                      <div key={r} style={{ padding: '8px', border: '1px solid #eee', marginTop: '5px', background: total > 0 ? '#e3f2fd' : 'white', borderRadius:4 }}>
+                      <div key={r} style={{ padding: '8px', border: '1px solid #eee', marginTop: '5px', background: total > 0 ? '#e3f2fd' : 'white', borderRadius: 4 }}>
                         <div style={{ fontWeight: 'bold', fontSize: '11px' }}>{r} ({total})</div>
                         {items.map((it, idx) => (
-                          <div key={idx} style={{ fontSize: '9px', marginTop: 5, borderTop: '1px solid #f0f0f0', paddingTop: 3 }}>
+                          <div key={idx} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #f0f0f0', paddingTop: 2 }}>
                             <b>{it.spk}</b> (Size:{it.size}) <br/>
-                            Qty: {it.stock}/{it.target} <br/>
-                            <span style={{color:'#3498db'}}>To: {it.last_to || '-'}</span>
+                            {it.stock}/{it.target} | <b>To: {it.last_to || '-'}</b>
                           </div>
                         ))}
                       </div>
@@ -193,7 +193,6 @@ function App() {
           </div>
         </div>
       ) : (
-        /* DASHBOARD TV DENGAN DETAIL TO: */
         <div style={{ display: 'flex', gap: '15px' }}>
           <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
             {HURUF_RAK.map(h => (
@@ -209,7 +208,7 @@ function App() {
                         <b style={{color:'#3498db'}}>{r}</b> <b>{ttl}</b>
                       </div>
                       {itms.map((it, idx) => (
-                        <div key={idx} style={{fontSize:10, marginTop:4, background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '4px'}}>
+                        <div key={idx} style={{fontSize:10, marginTop:4, background: 'rgba(255,255,255,0.05)', padding: 5, borderRadius: 4}}>
                           <b>{it.spk}</b> | {it.style} <br/>
                           Size: {it.size} | <b>{it.stock}/{it.target}</b> <br/>
                           <span style={{color:'#3498db'}}>To: {it.last_to || '-'}</span> <br/>
@@ -223,12 +222,12 @@ function App() {
             ))}
           </div>
           <div style={{ flex: 1, background: '#161b22', padding: 15, borderRadius: 12, borderLeft: '4px solid #3498db', color:'white' }}>
-            <h4 style={{textAlign:'center', color:'#3498db', marginTop:0}}>LIVE ACTIVITY TRANSACTIONS</h4>
+            <h4 style={{textAlign:'center', color:'#3498db', marginTop:0}}>LIVE ACTIVITY</h4>
             <div style={{maxHeight:'80vh', overflowY:'auto'}}>
               {rawRecords.map((log, i) => (
                 <div key={i} style={{fontSize:10, padding:'8px 0', borderBottom:'1px solid #222'}}>
-                  <b style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</b> | {log.spk_number}
-                  <div style={{color:'#aaa'}}>Ke/Dari: {log.destination || log.source_from || '-'}</div>
+                  <b style={{color: log.qty_in > 0 ? '#2ecc71' : '#e74c3c'}}>{log.qty_in > 0 ? 'IN' : 'OUT'}</b> | {log.spk_number} | Sz: {log.size}
+                  <div style={{color:'#aaa'}}>Ket: {log.destination || log.source_from || '-'}</div>
                   <div style={{color:'#666', fontSize:9}}>{log.waktu_input}</div>
                 </div>
               ))}
@@ -240,7 +239,7 @@ function App() {
       {showExportModal && (
         <div style={s.modalOverlay}>
           <div style={s.modalContent}>
-            <h3>EXPORT MENU</h3>
+            <h3>EXPORT DATA</h3>
             <div style={{display:'flex', flexDirection:'column', gap:10}}>
                <button onClick={() => exportToXlsx(inventory, 'Summary_Stock')} style={{...s.btn, background:'#1a237e'}}>Export Summary (XLSX)</button>
                <button onClick={() => exportToXlsx(rawRecords, 'Log_Transaksi')} style={{...s.btn, background:'#8e44ad'}}>Export Log (XLSX)</button>
@@ -257,7 +256,7 @@ const s = {
   input: { padding: '10px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '13px' },
   btn: { padding: '10px 15px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', cursor: 'pointer' },
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  modalContent: { background: 'white', padding: '30px', borderRadius: '15px', textAlign: 'center' }
+  modalContent: { background: 'white', padding: '30px', borderRadius: '20px', textAlign: 'center' }
 };
 
 export default App;
