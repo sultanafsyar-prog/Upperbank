@@ -188,12 +188,7 @@ function App() {
       ) : (
         /* DASHBOARD TV (SUDAH DARK) */
         <div style={{ display: 'flex', gap: '15px' }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#161b22', padding: 15, borderRadius: 12, border: '4px solid #58a6ff' }}>
-            <h2 style={{ color: '#58a6ff', margin: 0 }}><img src="/logo.png" alt="Logo" style={{ width: '30px', height: '30px', marginRight: '10px' }} />PT DIAMOND INTERNATIONAL INDONESIA</h2>
-            <h3 style={{ color: '#c9d1d9', marginTop: 5 }}>SUPERMARKET TRANSACTION CONTROL DASHBOARD</h3>
-            <img src="/logo.png" alt="Logo" style={{ width: '80px', height: '80px', marginTop: '10px' }} />
-          </div>
-          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+          <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
             {HURUF_RAK.map(h => (
               <div key={h}>
                 <div style={{background:'#58a6ff', color:'#0d1117', textAlign:'center', fontWeight:'bold', padding:5, borderRadius:4, marginBottom:8}}>RAK {h}</div>
