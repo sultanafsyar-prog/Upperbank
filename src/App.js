@@ -132,7 +132,6 @@ function App() {
   if (!isLoggedIn) return (
     <div style={{...s.overlay, background: '#0d1117'}}>
       <div style={{...s.card, width: '350px', border: '1px solid #30363d'}}>
-        <h2 img style={{width: '20px', marginBottom: '15px'}} src="/logo.png" alt="Logo" />
         <h2 style={{color: '#58a6ff', marginBottom: '5px'}}>SYSTEM LOGIN</h2>
         <div style={{fontSize: '10px', color: '#8b949e', marginBottom: '20px'}}>THIRD AXIS CENTER</div>
         <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:15}}>
