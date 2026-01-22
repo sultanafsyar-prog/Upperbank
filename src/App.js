@@ -132,8 +132,9 @@ function App() {
   if (!isLoggedIn) return (
     <div style={{...s.overlay, background: '#0d1117'}}>
       <div style={{...s.card, width: '350px', border: '1px solid #30363d'}}>
+        <h2 img style={{width: '20px', marginBottom: '15px'}} src="/logo.png" alt="Logo" />
         <h2 style={{color: '#58a6ff', marginBottom: '5px'}}>SYSTEM LOGIN</h2>
-        <div style={{fontSize: '5px', color: '#8b949e', marginBottom: '20px'}}>THIRD AXIS CENTER</div>
+        <div style={{fontSize: '10px', color: '#8b949e', marginBottom: '20px'}}>THIRD AXIS CENTER</div>
         <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:15}}>
           <input style={s.darkInput} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
           <input style={s.darkInput} type="password" placeholder="Password" onChange={e => setLoginPassword(e.target.value)} required />
@@ -157,7 +158,7 @@ function App() {
 
       <nav style={{ background: '#161b22', border: '1px solid #30363d', padding: '15px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#58a6ff', fontSize: '22px' }}><img src="/supermarket-icon.png" alt="Supermarket Icon" style={{ width: '24px', height: '24px', marginRight: '8px' }} />SUPERMARKET DIGITAL SYSTEM</h2>
+          <h2 style={{ margin: 0, color: '#58a6ff', fontSize: '22px' }}><img src="/logo.png" alt="Supermarket Icon" style={{ width: '24px', height: '24px', marginRight: '8px' }} />SUPERMARKET DIGITAL SYSTEM</h2>
           <div style={{fontSize: '9px', color: '#8b949e', letterSpacing:'1px'}}>PT DIAMOND INTERNATIONAL INDONESIA</div>
         </div>
         <div>
