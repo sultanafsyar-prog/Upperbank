@@ -7,7 +7,7 @@ const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 const HURUF_RAK = ["I", "H", "F", "E", "D"];
 const NOMOR_RAK = ["01", "02", "03", "04", "05", "06"];
 const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => NOMOR_RAK.map(n => `${h}-${n}`));
-const DAFTAR_STOCKFIT = ["STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
+const DAFTAR_STOCKFIT = ["GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
@@ -195,9 +195,9 @@ function App() {
                 {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               <div style={{padding: '12px', background: '#0d1117', borderRadius: '8px', border: '1px solid #30363d'}}>
-                <label style={{fontSize: '11px', color: '#8b949e'}}>DARI (Stockfit)</label>
+                <label style={{fontSize: '11px', color: '#8b949e'}}>DARI (Stockfit/Global)</label>
                 <select style={{...s.darkInput, width: '100%', marginTop:5}} value={formData.source_from} onChange={e => setFormData({ ...formData, source_from: e.target.value })}>
-                  <option value="">-- Pilih Stockfit --</option>
+                  <option value="">-- Pilih Stockfit/Global --</option>
                   {DAFTAR_STOCKFIT.map(sf => <option key={sf} value={sf}>{sf}</option>)}
                 </select>
                 <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan)</label>
@@ -303,8 +303,8 @@ function App() {
                                 </div>
                                 <div style={{display:'flex', justifyContent:'space-between', fontSize:9}}>
                                   <span>{it.stock}/{it.target}</span>
-                                  <span style={{color:'#f0883e', fontWeight:'bold'}}>→ {it.destination}</span>
                                 </div>
+                                <div style={{fontSize:'8px', color:'#ffb829', marginTop:2}}>Dari: {it.source} → {it.destination}</div>
                               </div>
                             )
                           })}
@@ -333,7 +333,7 @@ function App() {
                         <span style={{color: '#f85149', fontWeight:'bold'}}>{log.destination}</span>
                       </div>
                       <div style={{display:'flex', justifyContent:'space-between', marginTop:5, fontSize:9, color:'#484f58'}}>
-                        <b>{log.qty_in || log.qty_out} Ps</b>
+                        <b>{log.qty_in || log.qty_out} Pasang</b>
                         <span>{log.waktu_input.split(' ')[1]}</span>
                       </div>
                     </div>
