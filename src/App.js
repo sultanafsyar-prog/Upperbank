@@ -223,6 +223,7 @@ function App() {
                           <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
                             <b>{it.spk}</b> <br/>
                             <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
+                            <div style={{fontSize:'8px', color:'#8b949e'}}>XFD: {it.xfd}</div>
                             <div style={{textAlign:'right', color:'#58a6ff', fontSize:'11px'}}>{it.stock} ps</div>
                             <div style={{textAlign:'right', color:'#f0883e', fontSize:'9px'}}>→ {it.destination}</div>
                           </div>
@@ -295,6 +296,7 @@ function App() {
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
                                   <b style={{color: color}}>{persen}%</b>
                                 </div>
+                                <div style={{fontSize:'8px', color:'#ffb829'}}>XFD: {it.xfd}</div>
                                 <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
                                 <div style={{width:'100%', height:3, background:'#30363d', borderRadius:2, marginBottom:4}}>
                                   <div style={{width:`${Math.min(persen, 100)}%`, height:'100%', background: color, borderRadius:2}}></div>
