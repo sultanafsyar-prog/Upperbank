@@ -21,6 +21,8 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
 
+  const [currentTime, setCurrentTime] = useState(new Date());
+
   const [formData, setFormData] = useState({
     spk_number: '', style_name: '', qty: 0, target_qty: 0,
     xfd_date: '', type: 'IN', source_from: '', destination: '', rack: ''
@@ -60,6 +62,11 @@ function App() {
       return () => { unsub.then(f => f()); };
     }
   }, [fetchData, isLoggedIn]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleItemClick = (item) => {
     if (viewMode !== 'ADMIN') return;
@@ -193,7 +200,7 @@ function App() {
                   <option value="">-- Pilih Stockfit --</option>
                   {DAFTAR_STOCKFIT.map(sf => <option key={sf} value={sf}>{sf}</option>)}
                 </select>
-                <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan Otomatis)</label>
+                <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan)</label>
                 <input style={{...s.darkInput, width: '94%', marginTop:5, opacity: 0.8}} value={formData.destination} onChange={e => setFormData({ ...formData, destination: e.target.value })} />
               </div>
               <button type="submit" style={{ ...s.btn, background: '#1f6feb', padding: 15 }}>{isSubmitting ? 'PROSES...' : 'SIMPAN DATA'}</button>
@@ -214,7 +221,10 @@ function App() {
                         <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{r} ({total})</div>
                         {items.map((it, idx) => (
                           <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
-                            <b>{it.spk}</b> <br/> {it.stock} ps → {it.destination}
+                            <b>{it.spk}</b> <br/>
+                            <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
+                            <div style={{textAlign:'right', color:'#58a6ff', fontSize:'11px'}}>{it.stock} ps</div>
+                            <div style={{textAlign:'right', color:'#f0883e', fontSize:'9px'}}>→ {it.destination}</div>
                           </div>
                         ))}
                       </div>
@@ -228,6 +238,9 @@ function App() {
       ) : (
         /* TV MODE DASHBOARD */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ textAlign: 'center', color: '#58a6ff', fontSize: '25px', fontWeight: 'bold', marginBottom: '10px' }}>
+            {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
           <div style={{ display: 'flex', gap: '20px' }}>
              <div style={s.modernStatCard}>
                 <div style={s.watermark}>IN</div>
@@ -282,6 +295,7 @@ function App() {
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
                                   <b style={{color: color}}>{persen}%</b>
                                 </div>
+                                <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
                                 <div style={{width:'100%', height:3, background:'#30363d', borderRadius:2, marginBottom:4}}>
                                   <div style={{width:`${Math.min(persen, 100)}%`, height:'100%', background: color, borderRadius:2}}></div>
                                 </div>
