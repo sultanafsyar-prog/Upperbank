@@ -7,7 +7,7 @@ const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 const HURUF_RAK = ["I", "H", "F", "E", "D"];
 const NOMOR_RAK = ["01", "02", "03", "04", "05", "06"];
 const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => NOMOR_RAK.map(n => `${h}-${n}`));
-const DAFTAR_STOCKFIT = ["GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
+const DAFTAR_STOCKFIT = ["PT WENCHUANG", "PT GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
@@ -195,9 +195,9 @@ function App() {
                 {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               <div style={{padding: '12px', background: '#0d1117', borderRadius: '8px', border: '1px solid #30363d'}}>
-                <label style={{fontSize: '11px', color: '#8b949e'}}>DARI (Stockfit/Global)</label>
+                <label style={{fontSize: '11px', color: '#8b949e'}}>DARI (Stockfit/supplayer)</label>
                 <select style={{...s.darkInput, width: '100%', marginTop:5}} value={formData.source_from} onChange={e => setFormData({ ...formData, source_from: e.target.value })}>
-                  <option value="">-- Pilih Stockfit/Global --</option>
+                  <option value="">-- Pilih Stockfit/Supplayer --</option>
                   {DAFTAR_STOCKFIT.map(sf => <option key={sf} value={sf}>{sf}</option>)}
                 </select>
                 <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan)</label>
