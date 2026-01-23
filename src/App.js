@@ -111,7 +111,8 @@ function App() {
         source_from: formData.source_from,
         destination: formData.destination,
         rack_location: formData.rack,
-        waktu_input: waktu
+        waktu_input: waktu,
+        operator: pb.authStore.model.username
       });
       alert("✅ Tersimpan!");
       setFormData({ ...formData, spk_number: '', style_name: '', qty: 0, target_qty: 0, xfd_date: '', source_from: '', destination: '' });
@@ -130,7 +131,15 @@ function App() {
   const handleLogout = () => { pb.authStore.clear(); setIsLoggedIn(false); };
 
   const exportToXlsx = (rows, fileName) => {
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const processedRows = rows.map(row => ({
+      ...row,
+      operator: row.operator || pb.authStore.model.username
+    }));
+    const filteredRows = processedRows.map(row => {
+      const { collectionId, collectionName, ...rest } = row;
+      return rest;
+    });
+    const ws = XLSX.utils.json_to_sheet(filteredRows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data");
     XLSX.writeFile(wb, `${fileName}.xlsx`);
@@ -333,7 +342,10 @@ function App() {
                         <span style={{color: '#f85149', fontWeight:'bold'}}>{log.destination}</span>
                       </div>
                       <div style={{display:'flex', justifyContent:'space-between', marginTop:5, fontSize:9, color:'#484f58'}}>
-                        <b>{log.qty_in || log.qty_out} Pasang</b>
+                        <div>
+                          <b>{log.qty_in || log.qty_out} Pasang</b>
+                          <div style={{fontSize:8, color:'#8b949e'}}>Op: {log.operator}</div>
+                        </div>
                         <span>{log.waktu_input.split(' ')[1]}</span>
                       </div>
                     </div>
