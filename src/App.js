@@ -4,9 +4,15 @@ import * as XLSX from 'xlsx';
 
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
-const HURUF_RAK = ["I", "H", "F", "E", "D"];
-const NOMOR_RAK = ["01", "02", "03", "04", "05", "06"];
-const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => NOMOR_RAK.map(n => `${h}-${n}`));
+const RAK_CONFIG = {
+  "I": ["01", "02", "03", "04", "05"],
+  "H": ["01", "02", "03", "04", "05"],
+  "F": ["01", "02", "03", "04", "05"],
+  "E": ["01", "02", "03", "04", "05", "06"],
+  "D": ["01", "02", "03", "04", "05", "06"]
+};
+const HURUF_RAK = Object.keys(RAK_CONFIG);
+const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => RAK_CONFIG[h].map(n => `${h}-${n}`));
 const DAFTAR_STOCKFIT = ["PT WENCHUANG", "PT GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
 
 function App() {
@@ -221,7 +227,7 @@ function App() {
               {HURUF_RAK.map(h => (
                 <div key={h} style={{ flex: 1, minWidth: '160px' }}>
                   <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>RAK {h}</div>
-                  {NOMOR_RAK.map(n => {
+                  {RAK_CONFIG[h].map(n => {
                     const r = `${h}-${n}`;
                     const items = inventory.filter(i => i.rack === r && i.spk.includes(searchTerm));
                     const total = items.reduce((a, b) => a + b.stock, 0);
@@ -287,7 +293,7 @@ function App() {
                     <div style={{background:'#58a6ff', color:'#0d1117', textAlign:'center', fontWeight:'bold', padding:5, borderRadius:4, marginBottom:8, fontSize:12}}>
                        RAK {h} <br/> <span style={{fontSize: 9}}>TOTAL: {totalHuruf}</span>
                     </div>
-                    {NOMOR_RAK.map(n => {
+                    {RAK_CONFIG[h].map(n => {
                       const r = `${h}-${n}`;
                       const itms = inventory.filter(i => i.rack === r);
                       const ttl = itms.reduce((a,b) => a + b.stock, 0);
