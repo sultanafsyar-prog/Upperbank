@@ -5,14 +5,18 @@ import * as XLSX from 'xlsx';
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
 const RAK_CONFIG = {
-  "I": ["01", "02", "03", "04", "05"],
-  "H": ["01", "02", "03", "04", "05"],
-  "F": ["01", "02", "03", "04", "05"],
+  "D": ["01", "02", "03", "04", "05", "06"],
   "E": ["01", "02", "03", "04", "05", "06"],
-  "D": ["01", "02", "03", "04", "05", "06"]
+  "F": ["01", "02", "03", "04", "05"],
+  "H": ["01", "02", "03", "04", "05"],
+  "I": ["01", "02", "03", "04", "05"]
 };
 const HURUF_RAK = Object.keys(RAK_CONFIG);
 const DAFTAR_RAK_FULL = HURUF_RAK.flatMap(h => RAK_CONFIG[h].map(n => `${h}-${n}`));
+const formatRakDisplay = (rak) => {
+  const [huruf, nomor] = rak.split('-');
+  return `Rak ${huruf}${parseInt(nomor)}`;
+};
 const DAFTAR_STOCKFIT = ["PT WENCHUANG", "PT GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
 
 function App() {
@@ -206,13 +210,13 @@ function App() {
               </div>
               <input style={{...s.darkInput, border: formData.type==='OUT'?'1px solid #da3633':'1px solid #30363d'}} placeholder="Stock" type="number" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
               <select style={s.darkInput} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
-                <option value="">-- Lokasi Rak --</option>
-                {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{r}</option>)}
+                <option value="">-- Lokasi RAK --</option>
+                {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{formatRakDisplay(r)}</option>)}
               </select>
               <div style={{padding: '12px', background: '#0d1117', borderRadius: '8px', border: '1px solid #30363d'}}>
                 <label style={{fontSize: '11px', color: '#8b949e'}}>DARI (Stockfit/supplayer)</label>
                 <select style={{...s.darkInput, width: '100%', marginTop:5}} value={formData.source_from} onChange={e => setFormData({ ...formData, source_from: e.target.value })}>
-                  <option value="">-- Pilih Stockfit/Supplayer --</option>
+                  <option value="">-- Pilih Stockfit Line/Supplayer --</option>
                   {DAFTAR_STOCKFIT.map(sf => <option key={sf} value={sf}>{sf}</option>)}
                 </select>
                 <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan)</label>
@@ -226,14 +230,14 @@ function App() {
             <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
               {HURUF_RAK.map(h => (
                 <div key={h} style={{ flex: 1, minWidth: '160px' }}>
-                  <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>RAK {h}</div>
+                  <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>Building {h}</div>
                   {RAK_CONFIG[h].map(n => {
                     const r = `${h}-${n}`;
                     const items = inventory.filter(i => i.rack === r && i.spk.includes(searchTerm));
                     const total = items.reduce((a, b) => a + b.stock, 0);
                     return (
                       <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: total > 0 ? '#1c2128' : 'transparent', borderRadius: 4 }}>
-                        <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{r} ({total})</div>
+                        <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{formatRakDisplay(r)} ({total})</div>
                         {items.map((it, idx) => (
                           <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
                             <b>{it.spk}</b> <br/>
@@ -291,7 +295,7 @@ function App() {
                 return (
                   <div key={h}>
                     <div style={{background:'#58a6ff', color:'#0d1117', textAlign:'center', fontWeight:'bold', padding:5, borderRadius:4, marginBottom:8, fontSize:12}}>
-                       RAK {h} <br/> <span style={{fontSize: 9}}>TOTAL: {totalHuruf}</span>
+                       Building {h} <br/> <span style={{fontSize: 9}}>TOTAL: {totalHuruf}</span>
                     </div>
                     {RAK_CONFIG[h].map(n => {
                       const r = `${h}-${n}`;
@@ -300,7 +304,7 @@ function App() {
                       return (
                         <div key={r} style={{background:'#161b22', padding:8, borderRadius:8, marginBottom:8, border: ttl > 0 ? '1px solid #58a6ff' : '1px solid #30363d', minHeight:105}}>
                           <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid #30363d', fontSize:13, marginBottom:4, paddingBottom:2}}>
-                            <b style={{color:'#58a6ff'}}>{r}</b> <b>{ttl}</b>
+                            <b style={{color:'#58a6ff'}}>{formatRakDisplay(r)}</b> <b>{ttl}</b>
                           </div>
                           {itms.map((it, idx) => {
                             const persen = it.target > 0 ? Math.round((it.stock / it.target) * 100) : 0;
