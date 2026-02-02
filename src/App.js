@@ -17,7 +17,7 @@ const formatRakDisplay = (rak) => {
   const [huruf, nomor] = rak.split('-');
   return `Rak ${huruf}${parseInt(nomor)}`;
 };
-const DAFTAR_STOCKFIT = ["PT WENCHUANG", "PT GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
+const DAFTAR_STOCKFIT = ["BUFFING", "PT WENCHUANG", "PT GLOBAL", "STOCKFIT 1", "STOCKFIT 2", "STOCKFIT 3", "STOCKFIT 4", "STOCKFIT 5", "STOCKFIT 6", "STOCKFIT 7"];
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(pb.authStore.isValid);
@@ -149,6 +149,16 @@ function App() {
     }));
     const filteredRows = processedRows.map(row => {
       const { collectionId, collectionName, waktu_input, ...rest } = row;
+      // Rename 'target' to 'order_qty' for Summary_Stok export
+      if (fileName === 'Summary_Stok' && rest.target !== undefined) {
+        rest.order_qty = rest.target;
+        delete rest.target;
+      }
+      // Rename 'target_qty' to 'order_qty' for Log_Transaksi export
+      if (fileName === 'Log_Transaksi' && rest.target_qty !== undefined) {
+        rest.order_qty = rest.target_qty;
+        delete rest.target_qty;
+      }
       return rest;
     });
     const ws = XLSX.utils.json_to_sheet(filteredRows);
