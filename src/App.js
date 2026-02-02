@@ -142,11 +142,13 @@ function App() {
 
   const exportToXlsx = (rows, fileName) => {
     const processedRows = rows.map(row => ({
+      Tanggal: row.waktu_input ? row.waktu_input.split(' ')[0] : '',
+      Waktu: row.waktu_input ? row.waktu_input.split(' ')[1] : '',
       ...row,
       operator: row.operator || pb.authStore.model.username
     }));
     const filteredRows = processedRows.map(row => {
-      const { collectionId, collectionName, ...rest } = row;
+      const { collectionId, collectionName, waktu_input, ...rest } = row;
       return rest;
     });
     const ws = XLSX.utils.json_to_sheet(filteredRows);
@@ -221,6 +223,9 @@ function App() {
                 </select>
                 <label style={{fontSize: '11px', color: '#8b949e', display:'block', marginTop:10}}>KE (Tujuan)</label>
                 <input style={{...s.darkInput, width: '94%', marginTop:5, opacity: 0.8}} value={formData.destination} onChange={e => setFormData({ ...formData, destination: e.target.value })} />
+              </div>
+              <div style={{ padding: '10px', background: '#0d1117', borderRadius: '6px', border: '1px solid #30363d', fontSize: '12px', color: '#8b949e', textAlign: 'center' }}>
+                Waktu Input/Output: {currentTime.toLocaleString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </div>
               <button type="submit" style={{ ...s.btn, background: '#1f6feb', padding: 15 }}>{isSubmitting ? 'PROSES...' : 'SIMPAN DATA'}</button>
             </form>
@@ -356,7 +361,7 @@ function App() {
                           <b>{log.qty_in || log.qty_out} Pasang</b>
                           <div style={{fontSize:8, color:'#8b949e'}}>Op: {log.operator}</div>
                         </div>
-                        <span>{log.waktu_input.split(' ')[1]}</span>
+                        <span style={{fontSize: '8px'}}>{log.waktu_input}</span>
                       </div>
                     </div>
                   );
