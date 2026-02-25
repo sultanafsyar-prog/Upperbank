@@ -265,7 +265,7 @@ function App() {
                  <input style={{...s.darkInput, flex:1}} placeholder="Qty Order" type="number" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
                  <div style={{flex:1, position:'relative'}}>
                    <input
-                     style={{...s.darkInput, width:'80%', color: '#ffffff'}}
+                     style={{...s.darkInput, width:'93%', color: '#ffffff'}}
                      type="date"
                      value={formData.xfd_date}
                      onChange={e => setFormData({ ...formData, xfd_date: e.target.value })}
