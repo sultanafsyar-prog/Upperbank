@@ -406,18 +406,19 @@ function App() {
                             <b style={{color:'#58a6ff'}}>{formatRakDisplay(r)}</b> <b>{ttl}</b>
                           </div>
                           {itms.map((it, idx) => {
-                            const persen = it.target > 0 ? Math.round((it.stock / it.target) * 100) : 0;
-                            let color = (persen >= 100) ? '#3fb950' : (persen < 30 ? '#f85149' : '#58a6ff');
+                            // Calculate balance percentage: (order_qty - balance) / order_qty
+                            const balancePersen = it.target > 0 ? Math.round(((it.target - it.balance) / it.target) * 100) : 0;
+                            let color = (balancePersen >= 100) ? '#3fb950' : (balancePersen < 30 ? '#f85149' : '#58a6ff');
                             return (
                               <div key={idx} style={{fontSize:10, marginTop:8, background: 'rgba(255,255,255,0.02)', padding: 6, borderRadius: 6, border: '1px solid #21262d'}}>
                                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:3}}>
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
-                                  <b style={{color: color}}>{persen}%</b>
+                                  <b style={{color: color}}>{balancePersen}%</b>
                                 </div>
                                 <div style={{fontSize:'8px', color:'#ffb829'}}>XFD: {it.xfd}</div>
                                 <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
                                 <div style={{width:'100%', height:3, background:'#30363d', borderRadius:2, marginBottom:4}}>
-                                  <div style={{width:`${Math.min(persen, 100)}%`, height:'100%', background: color, borderRadius:2}}></div>
+                                  <div style={{width:`${Math.min(balancePersen, 100)}%`, height:'100%', background: color, borderRadius:2}}></div>
                                 </div>
                                 <div style={{display:'flex', justifyContent:'space-between', fontSize:9}}>
                                   <span>{it.stock}/{it.target}</span>
