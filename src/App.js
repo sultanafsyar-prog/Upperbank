@@ -414,7 +414,7 @@ function App() {
                                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3}}>
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
                                   {/* Prominent percentage indicator box */}
-                                  <div style={{width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: `3px solid ${color}`, background: 'rgba(0,0,0,0.3)'}}>
+                                  <div style={{width: 10, height: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: `3px solid ${color}`, background: 'rgba(0,0,0,0.3)'}}>
                                     <b style={{color: color, fontSize: 18}}>{balancePersen}%</b>
                                   </div>
                                 </div>
