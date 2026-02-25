@@ -329,15 +329,21 @@ function App() {
                     return (
                       <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: '#1c2128', borderRadius: 4 }}>
                         <div style={{ fontWeight: 'bold', fontSize: '11px', color: '#58a6ff' }}>{formatRakDisplay(r)} ({total})</div>
-                        {items.map((it, idx) => (
-                          <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
-                            <b>{it.spk}</b> <span style={{fontSize: '8px', color: it.balance >= 0 ? '#ffb829' : '#f85149', marginLeft: '5px'}}>Balance: {it.balance}</span><br/>
-                            <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
-                            <div style={{fontSize:'8px', color:'#8b949e'}}>XFD: {it.xfd}</div>
-                            <div style={{textAlign:'right', color:'#58a6ff', fontSize:'11px'}}>{it.stock} ps</div>
-                            <div style={{textAlign:'right', color:'#f0883e', fontSize:'9px'}}>→ {it.destination}</div>
-                          </div>
-                        ))}
+                        {items.map((it, idx) => {
+                          const balancePersen = it.target > 0 ? Math.round((it.balance / it.target) * 100) : 0;
+                          let balanceColor = (balancePersen >= 100) ? '#3fb950' : (balancePersen < 30 ? '#f85149' : '#58a6ff');
+                          return (
+                            <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
+                              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: 2}}>
+                                <b>{it.spk}</b> <span style={{fontSize: '8px', color: balanceColor, fontWeight: 'bold'}}>{balancePersen}%</span>
+                              </div>
+                              <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
+                              <div style={{fontSize:'8px', color:'#8b949e'}}>XFD: {it.xfd}</div>
+                              <div style={{textAlign:'right', color:'#58a6ff', fontSize:'11px'}}>{it.stock} ps | Balance: {it.balance}</div>
+                              <div style={{textAlign:'right', color:'#f0883e', fontSize:'9px'}}>→ {it.destination}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}
