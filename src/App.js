@@ -413,10 +413,7 @@ function App() {
                               <div key={idx} style={{fontSize:10, marginTop:8, background: 'rgba(255,255,255,0.02)', padding: 6, borderRadius: 6, border: '1px solid #21262d', position: 'relative'}}>
                                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3}}>
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
-                                  {/* Prominent percentage indicator box */}
-                                  <div style={{width: 10, height: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: `3px solid ${color}`, background: 'rgba(0,0,0,0.3)'}}>
-                                    <b style={{color: color, fontSize: 18}}>{balancePersen}%</b>
-                                  </div>
+                                  <b style={{color: color}}>{balancePersen}%</b>
                                 </div>
                                 <div style={{fontSize:'8px', color:'#ffb829'}}>XFD: {it.xfd}</div>
                                 <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
