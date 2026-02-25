@@ -52,16 +52,32 @@ function App() {
         const key = `${curr.spk_number}-${curr.rack_location}`;
         if (!acc[key]) {
           acc[key] = {
-            spk: curr.spk_number, style: curr.style_name || '-',
-            rack: curr.rack_location, stock: 0, target: 0, 
-            xfd: curr.xfd_date, source: curr.source_from, destination: curr.destination 
+            spk: curr.spk_number,
+            style: curr.style_name || '-',
+            rack: curr.rack_location,
+            total_input: 0,
+            total_output: 0,
+            stock: 0,
+            target: 0,
+            xfd: curr.xfd_date,
+            source: curr.source_from,
+            destination: curr.destination
           };
         }
-        acc[key].stock += (Number(curr.qty_in || 0) - Number(curr.qty_out || 0));
+        acc[key].total_input += Number(curr.qty_in || 0);
+        acc[key].total_output += Number(curr.qty_out || 0);
+        acc[key].stock = acc[key].total_input - acc[key].total_output;
         if (Number(curr.target_qty) > 0) acc[key].target = Number(curr.target_qty);
         return acc;
       }, {});
-      setInventory(Object.values(summary).filter(i => i.stock > 0));
+
+      // Compute balance as: order_qty - total_input
+      const inventoryWithBalance = Object.values(summary).map(item => ({
+        ...item,
+        balance: (Number(item.target) || 0) - (Number(item.total_input) || 0)
+      })).filter(i => i.stock > 0 || (i.target && i.target > 0));
+
+      setInventory(inventoryWithBalance);
     } catch (error) { console.error("Sync Error"); }
   }, [isLoggedIn]);
 
@@ -69,7 +85,8 @@ function App() {
     if (isLoggedIn) {
       fetchData();
       const unsub = pb.collection('upper_stock').subscribe('*', () => fetchData());
-      return () => { unsub.then(f => f()); };
+      // `subscribe` returns an unsubscribe function (not a promise)
+      return () => { if (typeof unsub === 'function') unsub(); };
     }
   }, [fetchData, isLoggedIn]);
 
@@ -98,12 +115,18 @@ function App() {
     e.preventDefault();
     if (isSubmitting) return;
 
+    // VALIDASI: Qty tidak boleh melebihi order
+    if (formData.target_qty && Number(formData.qty) > Number(formData.target_qty)) {
+      alert(`QTY INPUT tidak boleh lebih dari ORDER QTY (${formData.target_qty})`);
+      return;
+    }
+
     // VALIDASI: Cek sisa stok sebelum OUT
     if (formData.type === 'OUT') {
       const currentItem = inventory.find(i => i.spk === formData.spk_number && i.rack === formData.rack);
       const stockTersedia = currentItem ? currentItem.stock : 0;
       if (Number(formData.qty) > stockTersedia) {
-        alert(`❌ STOK TIDAK CUKUP!\nSisa di rak: ${stockTersedia} ps.\nInput Anda: ${formData.qty} ps.`);
+        alert(`STOK TIDAK CUKUP!\nSisa di rak: ${stockTersedia} ps.\nInput Anda: ${formData.qty} ps.`);
         return;
       }
     }
@@ -126,7 +149,7 @@ function App() {
       });
       alert("✅ Tersimpan!");
       setFormData({ ...formData, spk_number: '', style_name: '', qty: 0, target_qty: 0, xfd_date: '', source_from: '', destination: '' });
-    } catch (err) { alert("❌ Gagal!"); } finally { setIsSubmitting(false); }
+    } catch (err) { alert("Gagal!"); } finally { setIsSubmitting(false); }
   };
 
   const handleLogin = async (e) => {
@@ -135,7 +158,7 @@ function App() {
     try {
       await pb.collection('users').authWithPassword(loginEmail, loginPassword);
       setIsLoggedIn(true);
-    } catch (err) { alert("⚠️ LOGIN GAGAL!"); } finally { setLoading(false); }
+    } catch (err) { alert("LOGIN GAGAL!"); } finally { setLoading(false); }
   };
 
   const handleLogout = () => { pb.authStore.clear(); setIsLoggedIn(false); };
@@ -152,6 +175,10 @@ function App() {
       // Rename 'target' to 'order_qty' for Summary_Stok export
       if (fileName === 'Summary_Stok' && rest.target !== undefined) {
         rest.order_qty = rest.target;
+        // prefer explicit balance, otherwise compute from order - total_input
+        rest.balance = rest.balance !== undefined ? rest.balance : (rest.order_qty - (rest.total_input || 0));
+        // include total_input in export so users can see progress
+        rest.total_input = rest.total_input !== undefined ? rest.total_input : 0;
         delete rest.target;
       }
       // Rename 'target_qty' to 'order_qty' for Log_Transaksi export
@@ -218,9 +245,38 @@ function App() {
               <input style={s.darkInput} placeholder="Style / Artikel" value={formData.style_name} onChange={e => setFormData({ ...formData, style_name: e.target.value.toUpperCase() })} />
               <div style={{display:'flex', gap:5}}>
                  <input style={{...s.darkInput, flex:1}} placeholder="Qty Order" type="number" value={formData.target_qty || ''} onChange={e => setFormData({ ...formData, target_qty: e.target.value })} />
-                 <input style={{...s.darkInput, flex:1}} type="date" value={formData.xfd_date} onChange={e => setFormData({ ...formData, xfd_date: e.target.value })} />
+                 <div style={{flex:1, position:'relative'}}>
+                   <input
+                     style={{...s.darkInput, width:'100%'}}
+                     type="date"
+                     value={formData.xfd_date}
+                     onChange={e => setFormData({ ...formData, xfd_date: e.target.value })}
+                   />
+                   {/* XFD warning message */}
+                   {formData.xfd_date && (() => {
+                     const now = new Date();
+                     const xfd = new Date(formData.xfd_date);
+                     // diff in days (round up)
+                     const diff = Math.ceil((xfd - now) / (1000 * 60 * 60 * 24));
+                     if (diff < 0) {
+                       return <div style={{position:'absolute', top:'100%', left:0, fontSize:12, color:'#f85149'}}>⚠️ XFD sudah lewat!</div>;
+                     }
+                     if (diff <= 3) {
+                       return <div style={{position:'absolute', top:'100%', left:0, fontSize:12, color:'#ffb829'}}>⚠️ XFD tinggal {diff} hari</div>;
+                     }
+                     return null;
+                   })()}
+                 </div>
               </div>
-              <input style={{...s.darkInput, border: formData.type==='OUT'?'1px solid #da3633':'1px solid #30363d'}} placeholder="Stock" type="number" value={formData.qty || ''} onChange={e => setFormData({ ...formData, qty: e.target.value })} required />
+              <input
+                style={{...s.darkInput, border: formData.type==='OUT'?'1px solid #da3633':'1px solid #30363d'}}
+                placeholder="Stock"
+                type="number"
+                value={formData.qty || ''}
+                onChange={e => setFormData({ ...formData, qty: e.target.value })}
+                max={formData.target_qty || undefined}
+                required
+              />
               <select style={s.darkInput} value={formData.rack} onChange={e => setFormData({ ...formData, rack: e.target.value })} required>
                 <option value="">-- Lokasi RAK --</option>
                 {DAFTAR_RAK_FULL.map(r => <option key={r} value={r}>{formatRakDisplay(r)}</option>)}
@@ -255,7 +311,7 @@ function App() {
                         <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{formatRakDisplay(r)} ({total})</div>
                         {items.map((it, idx) => (
                           <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
-                            <b>{it.spk}</b> <br/>
+                            <b>{it.spk}</b> <span style={{fontSize: '8px', color: it.balance >= 0 ? '#ffb829' : '#f85149', marginLeft: '5px'}}>Balance: {it.balance}</span><br/>
                             <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
                             <div style={{fontSize:'8px', color:'#8b949e'}}>XFD: {it.xfd}</div>
                             <div style={{textAlign:'right', color:'#58a6ff', fontSize:'11px'}}>{it.stock} ps</div>
@@ -337,6 +393,7 @@ function App() {
                                 </div>
                                 <div style={{display:'flex', justifyContent:'space-between', fontSize:9}}>
                                   <span>{it.stock}/{it.target}</span>
+                                  <span style={{color: it.balance >= 0 ? '#31f82a' : '#f85149'}}>Balance: {it.balance}</span>
                                 </div>
                                 <div style={{fontSize:'8px', color:'#ffb829', marginTop:2}}>Dari: {it.source} → {it.destination}</div>
                               </div>

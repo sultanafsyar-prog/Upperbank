@@ -4,7 +4,17 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- theme-color is used by Chrome, Edge, Android; not supported on older Safari
+         (warning from compat linter can be ignored) -->
     <meta name="theme-color" content="#000000" />
+    <!-- Windows tile color fallback -->
+    <meta name="msapplication-TileColor" content="#000000" />
+
+    <!-- enable full‑screen mode on supported mobile browsers -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Inventory" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta
       name="description"
       content="Web site created using create-react-app"
