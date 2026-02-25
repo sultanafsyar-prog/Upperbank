@@ -11,3 +11,28 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Make date input text visible on dark backgrounds and style picker icon */
+input[type="date"] {
+  color: #ffffff;
+  background: transparent;
+}
+
+/* WebKit-specific parts of the date input (Chrome, Safari) */
+input[type="date"]::-webkit-datetime-edit {
+  color: #ffffff;
+}
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field {
+  color: #ffffff;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2);
+}
+
+/* Firefox: use color property on the input (limited styling for native picker) */
+input[type="date"]::-moz-focus-inner {
+  color: #ffffff;
+}
