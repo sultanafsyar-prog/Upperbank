@@ -355,7 +355,7 @@ function App() {
           <div style={{ display: 'flex', gap: '20px' }}>
              <div style={s.modernStatCard}>
                 <div style={s.watermark}>IN</div>
-                <div style={s.statLabel}>MASUK HARI INI (RESET)</div>
+                <div style={s.statLabel}>MASUK HARI INI </div>
                 <div style={{...s.statFlex, color: '#3fb950'}}>
                    <div style={s.statBigVal}>{rawRecords.filter(r => r.qty_in > 0 && r.waktu_input.includes(todayStr)).reduce((a, b) => a + Number(b.qty_in), 0)}</div>
                    <div style={s.unit}>Pasang</div>
@@ -363,7 +363,7 @@ function App() {
              </div>
              <div style={s.modernStatCard}>
                 <div style={{...s.watermark, color:'rgba(248,81,73,0.05)'}}>OUT</div>
-                <div style={s.statLabel}>KELUAR HARI INI (RESET)</div>
+                <div style={s.statLabel}>KELUAR HARI INI </div>
                 <div style={{...s.statFlex, color: '#f85149'}}>
                    <div style={s.statBigVal}>{rawRecords.filter(r => r.qty_out > 0 && r.waktu_input.includes(todayStr)).reduce((a, b) => a + Number(b.qty_out), 0)}</div>
                    <div style={s.unit}>Pasang</div>
@@ -371,7 +371,7 @@ function App() {
              </div>
              <div style={{...s.modernStatCard, background: 'linear-gradient(135deg, #1f6feb 0%, #161b22 100%)', border: '1px solid #58a6ff'}}>
                 <div style={{...s.watermark, color:'rgba(255,255,255,0.07)'}}>MARKET</div>
-                <div style={{...s.statLabel, color:'rgba(255,255,255,0.7)'}}>GLOBAL STOCK (AKTIF)</div>
+                <div style={{...s.statLabel, color:'rgba(255,255,255,0.7)'}}>GLOBAL STOCK </div>
                 <div style={{...s.statFlex, color: '#ffffff'}}>
                    <div style={s.statBigVal}>{inventory.reduce((a, b) => a + b.stock, 0)}</div>
                    <div style={s.unit}>Pasang</div>
