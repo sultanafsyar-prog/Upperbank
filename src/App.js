@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 const pb = new PocketBase('https://upperbank-production-c0b5.up.railway.app');
 
 const RAK_CONFIG = {
+  "C": ["01"],
   "D": ["01", "02", "03", "04", "05", "06"],
   "E": ["01", "02", "03", "04", "05", "06"],
   "F": ["01", "02", "03", "04", "05"],
@@ -74,8 +75,9 @@ function App() {
       // Compute balance as: order_qty - total_input
       const inventoryWithBalance = Object.values(summary).map(item => ({
         ...item,
-        balance: (Number(item.target) || 0) - (Number(item.total_input) || 0)
-      })).filter(i => i.stock > 0 || (i.target && i.target > 0));
+        // balance follows order minus current stock (which already accounts for inputs/outputs)
+        balance: (Number(item.target) || 0) - (Number(item.stock) || 0)
+      })).filter(i => i.stock > 0);
 
       setInventory(inventoryWithBalance);
     } catch (error) { console.error("Sync Error"); }
@@ -147,7 +149,9 @@ function App() {
         waktu_input: waktu,
         operator: pb.authStore.model.username
       });
-      alert("✅ Tersimpan!");
+      // refresh so UI updates (items with stock <= 0 are filtered out)
+      await fetchData();
+      // silently clear the form
       setFormData({ ...formData, spk_number: '', style_name: '', qty: 0, target_qty: 0, xfd_date: '', source_from: '', destination: '' });
     } catch (err) { alert("Gagal!"); } finally { setIsSubmitting(false); }
   };
@@ -164,6 +168,30 @@ function App() {
   const handleLogout = () => { pb.authStore.clear(); setIsLoggedIn(false); };
 
   const exportToXlsx = (rows, fileName) => {
+    if (fileName === 'Summary_Stok') {
+      // rows are inventory summary entries; map to friendly headers
+      const mapped = rows.map(r => ({
+        'SPK': r.spk || '',
+        'Style': r.style || '',
+        'Rak': r.rack || '',
+        'Order Qty': r.target || r.order_qty || 0,
+        'Total Masuk': r.total_input || 0,
+        'Total Keluar': r.total_output || 0,
+        'Stock': r.stock || 0,
+        'Balance': r.balance || ((r.target || 0) - (r.stock || 0)),
+        'XFD': r.xfd || '',
+        'Source': r.source || '',
+        'Destination': r.destination || '',
+        'Operator': r.operator || pb.authStore.model.username
+      }));
+      const ws = XLSX.utils.json_to_sheet(mapped);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+      XLSX.writeFile(wb, `${fileName}.xlsx`);
+      return;
+    }
+
+    // default: Log_Transaksi or raw rows
     const processedRows = rows.map(row => ({
       Tanggal: row.waktu_input ? row.waktu_input.split(' ')[0] : '',
       Waktu: row.waktu_input ? row.waktu_input.split(' ')[1] : '',
@@ -172,17 +200,7 @@ function App() {
     }));
     const filteredRows = processedRows.map(row => {
       const { collectionId, collectionName, waktu_input, ...rest } = row;
-      // Rename 'target' to 'order_qty' for Summary_Stok export
-      if (fileName === 'Summary_Stok' && rest.target !== undefined) {
-        rest.order_qty = rest.target;
-        // prefer explicit balance, otherwise compute from order - total_input
-        rest.balance = rest.balance !== undefined ? rest.balance : (rest.order_qty - (rest.total_input || 0));
-        // include total_input in export so users can see progress
-        rest.total_input = rest.total_input !== undefined ? rest.total_input : 0;
-        delete rest.target;
-      }
-      // Rename 'target_qty' to 'order_qty' for Log_Transaksi export
-      if (fileName === 'Log_Transaksi' && rest.target_qty !== undefined) {
+      if (rest.target_qty !== undefined) {
         rest.order_qty = rest.target_qty;
         delete rest.target_qty;
       }
@@ -190,7 +208,7 @@ function App() {
     });
     const ws = XLSX.utils.json_to_sheet(filteredRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
     XLSX.writeFile(wb, `${fileName}.xlsx`);
   };
 
@@ -306,9 +324,11 @@ function App() {
                     const r = `${h}-${n}`;
                     const items = inventory.filter(i => i.rack === r && i.spk.includes(searchTerm));
                     const total = items.reduce((a, b) => a + b.stock, 0);
+                    // hide rack entirely when total stock is 0
+                    if (total === 0) return null;
                     return (
-                      <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: total > 0 ? '#1c2128' : 'transparent', borderRadius: 4 }}>
-                        <div style={{ fontWeight: 'bold', fontSize: '11px', color: total > 0 ? '#58a6ff' : '#484f58' }}>{formatRakDisplay(r)} ({total})</div>
+                      <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: '#1c2128', borderRadius: 4 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '11px', color: '#58a6ff' }}>{formatRakDisplay(r)} ({total})</div>
                         {items.map((it, idx) => (
                           <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
                             <b>{it.spk}</b> <span style={{fontSize: '8px', color: it.balance >= 0 ? '#ffb829' : '#f85149', marginLeft: '5px'}}>Balance: {it.balance}</span><br/>
@@ -372,8 +392,10 @@ function App() {
                       const r = `${h}-${n}`;
                       const itms = inventory.filter(i => i.rack === r);
                       const ttl = itms.reduce((a,b) => a + b.stock, 0);
+                      // hide rack card when ttl is zero
+                      if (ttl === 0) return null;
                       return (
-                        <div key={r} style={{background:'#161b22', padding:8, borderRadius:8, marginBottom:8, border: ttl > 0 ? '1px solid #58a6ff' : '1px solid #30363d', minHeight:105}}>
+                        <div key={r} style={{background:'#161b22', padding:8, borderRadius:8, marginBottom:8, border: '1px solid #58a6ff', minHeight:105}}>
                           <div style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid #30363d', fontSize:13, marginBottom:4, paddingBottom:2}}>
                             <b style={{color:'#58a6ff'}}>{formatRakDisplay(r)}</b> <b>{ttl}</b>
                           </div>
