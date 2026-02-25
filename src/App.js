@@ -75,8 +75,8 @@ function App() {
       // Compute balance as: order_qty - total_input
       const inventoryWithBalance = Object.values(summary).map(item => ({
         ...item,
-        // balance follows order minus current stock (which already accounts for inputs/outputs)
-        balance: (Number(item.target) || 0) - (Number(item.stock) || 0)
+        // balance = ORDER QTY - TOTAL INPUT
+        balance: (Number(item.target) || 0) - (Number(item.total_input) || 0)
       })).filter(i => i.stock > 0);
 
       setInventory(inventoryWithBalance);
@@ -178,7 +178,7 @@ function App() {
         'Total Masuk': r.total_input || 0,
         'Total Keluar': r.total_output || 0,
         'Stock': r.stock || 0,
-        'Balance': r.balance || ((r.target || 0) - (r.stock || 0)),
+        'Balance': r.balance || ((r.target || 0) - (r.total_input || 0)),
         'XFD': r.xfd || '',
         'Source': r.source || '',
         'Destination': r.destination || '',
