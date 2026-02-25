@@ -215,7 +215,7 @@ function App() {
   if (!isLoggedIn) return (
     <div style={{...s.overlay, background: '#0d1117'}}>
       <div style={{...s.card, width: '350px', border: '1px solid #30363d'}}>
-        <h2 style={{color: '#58a6ff', marginBottom: '5px'}}>SYSTEM LOGIN</h2>
+        <h2 style={{color: '#58a6ff', marginBottom: '5px'}}>LOGIN</h2>
         <div style={{fontSize: '10px', color: '#8b949e', marginBottom: '20px'}}>THIRD AXIS CENTER</div>
         <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:15}}>
           <input style={s.darkInput} type="email" placeholder="Email" onChange={e => setLoginEmail(e.target.value)} required />
@@ -410,10 +410,13 @@ function App() {
                             const balancePersen = it.target > 0 ? Math.round(((it.target - it.balance) / it.target) * 100) : 0;
                             let color = (balancePersen >= 100) ? '#3fb950' : (balancePersen < 30 ? '#f85149' : '#58a6ff');
                             return (
-                              <div key={idx} style={{fontSize:10, marginTop:8, background: 'rgba(255,255,255,0.02)', padding: 6, borderRadius: 6, border: '1px solid #21262d'}}>
-                                <div style={{display:'flex', justifyContent:'space-between', marginBottom:3}}>
+                              <div key={idx} style={{fontSize:10, marginTop:8, background: 'rgba(255,255,255,0.02)', padding: 6, borderRadius: 6, border: '1px solid #21262d', position: 'relative'}}>
+                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3}}>
                                   <b style={{color:'#ffffff'}}>{it.spk}</b>
-                                  <b style={{color: color}}>{balancePersen}%</b>
+                                  {/* Prominent percentage indicator box */}
+                                  <div style={{width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: `3px solid ${color}`, background: 'rgba(0,0,0,0.3)'}}>
+                                    <b style={{color: color, fontSize: 18}}>{balancePersen}%</b>
+                                  </div>
                                 </div>
                                 <div style={{fontSize:'8px', color:'#ffb829'}}>XFD: {it.xfd}</div>
                                 <div style={{fontSize:'9px', color:'#8b949e', fontStyle:'italic'}}>{it.style}</div>
