@@ -770,8 +770,8 @@ function App() {
             {theme === 'dark' ? '☀️ ' : '🌙 '}{t('THEME')}
           </button>
           <button onClick={() => setViewMode(viewMode === 'ADMIN' ? 'TV' : 'ADMIN')} style={{ ...s.btn(colors), background: colors.purple, marginRight: 0 }}>{t('SWITCH_MODE')} {viewMode}</button>
-          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn(colors), background: colors.success }}>📊 {t('DATA_EXPORT')}</button>
-          <button onClick={handleLogout} style={{ ...s.btn(colors), background: colors.danger }}>🚪 {t('LOGOUT')}</button>
+          <button onClick={() => setShowExportModal(true)} style={{ ...s.btn(colors), background: colors.success }}><img src="./Excell.png" alt="Export" width="15" height="15" style={{marginRight: '5px'}} />{t('DATA_EXPORT')}</button>
+          <button onClick={handleLogout} style={{ ...s.btn(colors), background: colors.danger }}>{t('LOGOUT')}</button>
         </div>
       </nav>
 
