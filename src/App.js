@@ -327,8 +327,8 @@ function App() {
           </div>
           <div style={{ flex: 2.5, background: '#161b22', padding: '20px', borderRadius: '12px', border: '1px solid #30363d' }}>
             <input style={{ ...s.darkInput, width: '100%', marginBottom: '15px' }} placeholder="Cari SPK..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
-            {/* building grid for desktop: fixed 4 columns, vertical scroll */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
+            {/* unified parent container for building cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto' }}>
               {HURUF_RAK.map(h => (
                 <div key={h} style={{ minWidth: '160px' }}>
                   <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>Building {h}</div>
@@ -398,8 +398,8 @@ function App() {
           </div>
 
           <div style={{ display: 'flex', gap: '15px' }}>
-            {/* building grid: fixed 4 columns, scrollable with a max height to prevent dead space */}
-            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
+            {/* unified parent container for building cards in TV mode */}
+            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto' }}>
               {HURUF_RAK.map(h => {
                 const totalHuruf = inventory.filter(i => i.rack.startsWith(h)).reduce((a, b) => a + b.stock, 0);
                 return (
