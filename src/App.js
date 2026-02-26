@@ -30,6 +30,7 @@ function App() {
   const [inventory, setInventory] = useState([]);
   const [rawRecords, setRawRecords] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [tvSearch, setTvSearch] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -370,6 +371,14 @@ function App() {
           <div style={{ textAlign: 'center', color: '#58a6ff', fontSize: '25px', fontWeight: 'bold', marginBottom: '10px' }}>
             {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+            <input
+              style={{ ...s.darkInput, width: '40%', textAlign: 'center' }}
+              placeholder="Cari SPK / Style / XFD"
+              value={tvSearch}
+              onChange={e => setTvSearch(e.target.value)}
+            />
+          </div>
           <div style={{ display: 'flex', gap: '20px' }}>
              <div style={s.modernStatCard}>
                 <div style={s.watermark}>IN</div>
@@ -409,7 +418,15 @@ function App() {
                     </div>
                     {RAK_CONFIG[h].map(n => {
                       const r = `${h}-${n}`;
-                      const itms = inventory.filter(i => i.rack === r);
+                      const itms = inventory.filter(i => {
+                        if (i.rack !== r) return false;
+                        if (!tvSearch) return true;
+                        const q = tvSearch.toString().toUpperCase();
+                        const spk = (i.spk || '').toString().toUpperCase();
+                        const style = (i.style || '').toString().toUpperCase();
+                        const xfd = (i.xfd || '').toString();
+                        return spk.includes(q) || style.includes(q) || xfd.includes(tvSearch.toString());
+                      });
                       const ttl = itms.reduce((a,b) => a + b.stock, 0);
                       // hide rack card when ttl is zero
                       if (ttl === 0) return null;
