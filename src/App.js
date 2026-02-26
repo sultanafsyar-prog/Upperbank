@@ -73,11 +73,11 @@ function App() {
         return acc;
       }, {});
 
-      // Compute balance as: order_qty - total_input
+      // Compute balance as: order_qty - total_input, but never negative
       const inventoryWithBalance = Object.values(summary).map(item => ({
         ...item,
         // balance = ORDER QTY - TOTAL INPUT
-        balance: (Number(item.target) || 0) - (Number(item.total_input) || 0)
+        balance: Math.max(0, (Number(item.target) || 0) - (Number(item.total_input) || 0))
       })).filter(i => i.stock > 0);
 
       setInventory(inventoryWithBalance);
@@ -117,6 +117,26 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
+    // business rule: once balance reaches zero we shouldn't add more input
+    if (formData.type === 'IN') {
+      // try to find existing inventory entry for this spk/rack
+      const existing = inventory.find(i => i.spk === formData.spk_number && i.rack === formData.rack);
+      const qtyWanted = Number(formData.qty) || 0;
+      // determine the relevant target (new one if provided, otherwise existing)
+      const newTarget = Number(formData.target_qty) > 0 ? Number(formData.target_qty) : (existing ? existing.target : 0);
+      if (existing) {
+        const projectedTotalInput = (existing.total_input || 0) + qtyWanted;
+        const projectedBalance = newTarget - projectedTotalInput;
+        if (existing.balance <= 0 && newTarget === existing.target) {
+          alert('Balance sudah 0, tidak bisa ditambah.');
+          return;
+        }
+        if (projectedBalance < 0) {
+          alert(`Qty tidak boleh melebihi sisa balance (${existing.balance}).`);
+          return;
+        }
+      }
+    }
 
     // VALIDASI: Qty single entry tidak boleh melebihi order
     if (formData.target_qty && Number(formData.qty) > Number(formData.target_qty)) {
@@ -190,7 +210,7 @@ function App() {
         'Total Masuk': r.total_input || 0,
         'Total Keluar': r.total_output || 0,
         'Stock': r.stock || 0,
-        'Balance': r.balance || ((r.target || 0) - (r.total_input || 0)),
+        'Balance': r.balance !== undefined ? Math.max(0, r.balance) : Math.max(0, ((r.target || 0) - (r.total_input || 0))),
         'XFD': r.xfd || '',
         'Source': r.source || '',
         'Destination': r.destination || '',
@@ -343,7 +363,9 @@ function App() {
                       <div key={r} style={{ padding: '8px', border: '1px solid #30363d', marginTop: '5px', background: '#1c2128', borderRadius: 4 }}>
                         <div style={{ fontWeight: 'bold', fontSize: '11px', color: '#58a6ff' }}>{formatRakDisplay(r)} ({total})</div>
                         {items.map((it, idx) => {
-                          const balancePersen = it.target > 0 ? Math.round((it.balance / it.target) * 100) : 0;
+                          // show percentage of completion (0 balance => 100%) and clamp
+                          let balancePersen = it.target > 0 ? Math.round(((it.target - it.balance) / it.target) * 100) : 0;
+                          balancePersen = Math.max(0, Math.min(balancePersen, 100));
                           let balanceColor = (balancePersen >= 100) ? '#3fb950' : (balancePersen < 30 ? '#f85149' : '#58a6ff');
                           return (
                             <div key={idx} onClick={() => handleItemClick(it)} style={{ fontSize: '9px', marginTop: 4, borderTop: '1px solid #30363d', paddingTop: 2, color: '#8b949e', cursor: 'pointer' }}>
@@ -436,7 +458,8 @@ function App() {
                           </div>
                           {itms.map((it, idx) => {
                             // Calculate balance percentage: (order_qty - balance) / order_qty
-                            const balancePersen = it.target > 0 ? Math.round(((it.target - it.balance) / it.target) * 100) : 0;
+                            let balancePersen = it.target > 0 ? Math.round(((it.target - it.balance) / it.target) * 100) : 0;
+                            balancePersen = Math.max(0, Math.min(balancePersen, 100));
                             let color = (balancePersen >= 100) ? '#3fb950' : (balancePersen < 30 ? '#f85149' : '#58a6ff');
                             // Calculate XFD color based on deadline
                             let xfdColor = '#ffb829';
