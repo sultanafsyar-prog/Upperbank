@@ -371,14 +371,6 @@ function App() {
           <div style={{ textAlign: 'center', color: '#58a6ff', fontSize: '25px', fontWeight: 'bold', marginBottom: '10px' }}>
             {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-            <input
-              style={{ ...s.darkInput, width: '40%', textAlign: 'center' }}
-              placeholder="Cari SPK / Style / XFD"
-              value={tvSearch}
-              onChange={e => setTvSearch(e.target.value)}
-            />
-          </div>
           <div style={{ display: 'flex', gap: '20px' }}>
              <div style={s.modernStatCard}>
                 <div style={s.watermark}>IN</div>
@@ -405,7 +397,14 @@ function App() {
                 </div>
              </div>
           </div>
-
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+            <input
+              style={{ ...s.darkInput, width: '40%', textAlign: 'center' }}
+              placeholder="Cari SPK / Style / XFD"
+              value={tvSearch}
+              onChange={e => setTvSearch(e.target.value)}
+            />
+          </div>
           <div style={{ display: 'flex', gap: '15px' }}>
             {/* unified parent container for building cards in TV mode (six columns) */}
             <div style={{ flex: 4, display: 'grid', gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto', alignItems: 'start', boxSizing: 'border-box' }}>
