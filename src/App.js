@@ -117,10 +117,21 @@ function App() {
     e.preventDefault();
     if (isSubmitting) return;
 
-    // VALIDASI: Qty tidak boleh melebihi order
+    // VALIDASI: Qty single entry tidak boleh melebihi order
     if (formData.target_qty && Number(formData.qty) > Number(formData.target_qty)) {
       alert(`QTY INPUT tidak boleh lebih dari ORDER QTY (${formData.target_qty})`);
       return;
+    }
+    // VALIDASI: Total cumulative input untuk SPK+rack tidak boleh melebihi order
+    if (formData.type === 'IN' && formData.target_qty) {
+      // hitung input sebelumnya dari catatan mentah
+      const prevInput = rawRecords
+        .filter(r => r.spk_number === formData.spk_number && r.rack_location === formData.rack)
+        .reduce((sum, r) => sum + (Number(r.qty_in) || 0), 0);
+      if (prevInput + Number(formData.qty) > Number(formData.target_qty)) {
+        alert(`TOTAL INPUT (${prevInput + Number(formData.qty)}) tidak boleh lebih dari ORDER QTY (${formData.target_qty})`);
+        return;
+      }
     }
 
     // VALIDASI: Cek sisa stok sebelum OUT
@@ -316,9 +327,10 @@ function App() {
           </div>
           <div style={{ flex: 2.5, background: '#161b22', padding: '20px', borderRadius: '12px', border: '1px solid #30363d' }}>
             <input style={{ ...s.darkInput, width: '100%', marginBottom: '15px' }} placeholder="Cari SPK..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
-            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto' }}>
+            {/* building grid for desktop: fixed 4 columns, vertical scroll */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
               {HURUF_RAK.map(h => (
-                <div key={h} style={{ flex: 1, minWidth: '160px' }}>
+                <div key={h} style={{ minWidth: '160px' }}>
                   <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>Building {h}</div>
                   {RAK_CONFIG[h].map(n => {
                     const r = `${h}-${n}`;
@@ -386,7 +398,8 @@ function App() {
           </div>
 
           <div style={{ display: 'flex', gap: '15px' }}>
-            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+            {/* building grid: fixed 4 columns, scrollable with a max height to prevent dead space */}
+            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', maxHeight: '60vh', overflowY: 'auto' }}>
               {HURUF_RAK.map(h => {
                 const totalHuruf = inventory.filter(i => i.rack.startsWith(h)).reduce((a, b) => a + b.stock, 0);
                 return (
