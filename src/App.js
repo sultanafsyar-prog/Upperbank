@@ -328,9 +328,9 @@ function App() {
           <div style={{ flex: 2.5, background: '#161b22', padding: '20px', borderRadius: '12px', border: '1px solid #30363d' }}>
             <input style={{ ...s.darkInput, width: '100%', marginBottom: '15px' }} placeholder="Cari SPK..." onChange={e => setSearchTerm(e.target.value.toUpperCase())} />
             {/* unified parent container for building cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto', alignItems: 'start', boxSizing: 'border-box' }}>
               {HURUF_RAK.map(h => (
-                <div key={h} style={{ minWidth: '160px' }}>
+                <div key={h} style={{ width: '100%' }}>
                   <div style={{ textAlign: 'center', background: '#30363d', color:'#58a6ff', padding: '5px', fontWeight: 'bold', borderRadius: '4px', fontSize: 12 }}>Building {h}</div>
                   {RAK_CONFIG[h].map(n => {
                     const r = `${h}-${n}`;
@@ -398,8 +398,8 @@ function App() {
           </div>
 
           <div style={{ display: 'flex', gap: '15px' }}>
-            {/* unified parent container for building cards in TV mode */}
-            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto' }}>
+            {/* unified parent container for building cards in TV mode (six columns) */}
+            <div style={{ flex: 4, display: 'grid', gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gridAutoFlow: 'row', gap: '10px', maxHeight: '500px', overflowY: 'auto', alignItems: 'start', boxSizing: 'border-box' }}>
               {HURUF_RAK.map(h => {
                 const totalHuruf = inventory.filter(i => i.rack.startsWith(h)).reduce((a, b) => a + b.stock, 0);
                 return (
@@ -458,11 +458,13 @@ function App() {
                 )
               })}
             </div>
+          </div>
 
-            <div style={{ flex: 1.2, background: '#161b22', padding: 15, borderRadius: 12, borderLeft: '4px solid #58a6ff', height: 'fit-content' }}>
-              <h4 style={{textAlign:'center', color:'#58a6ff', marginTop:0, borderBottom:'1px solid #30363d', paddingBottom:10, fontSize:'12px'}}>LOG AKTIVITAS</h4>
-              <div style={{maxHeight:'75vh', overflowY:'auto'}}>
-                {rawRecords.map((log, i) => {
+          {/* log activity moved below building row */}
+          <div style={{ flex: 1.2, background: '#161b22', padding: 15, borderRadius: 12, borderLeft: '4px solid #58a6ff', height: 'fit-content', marginTop: '20px' }}>
+            <h4 style={{textAlign:'center', color:'#58a6ff', marginTop:0, borderBottom:'1px solid #30363d', paddingBottom:10, fontSize:'12px'}}>LOG AKTIVITAS</h4>
+            <div style={{maxHeight:'75vh', overflowY:'auto'}}>
+              {rawRecords.map((log, i) => {
                   const isIn = log.qty_in > 0;
                   return (
                     <div key={i} style={{ padding: 10, marginBottom: 8, background: '#0d1117', borderRadius: 8, border: '1px solid #30363d', position:'relative' }}>
@@ -485,7 +487,6 @@ function App() {
                     </div>
                   );
                 })}
-              </div>
             </div>
           </div>
         </div>
